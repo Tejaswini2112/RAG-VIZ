@@ -227,6 +227,7 @@ const statusStyles = {
 export default function StepCard({ step, label, index, style }: Props) {
   // Auto-expand error steps so users see the error message immediately
   const [expanded, setExpanded] = useState(step.status === "error");
+  const [expandedQueries, setExpandedQueries] = useState<Set<number>>(new Set());
 
   const styles = statusStyles[step.status];
   const hasData = Object.keys(step.data).length > 0;
@@ -267,7 +268,7 @@ export default function StepCard({ step, label, index, style }: Props) {
       {/* Expanded detail view */}
       {expanded && hasData && (step.status === "complete" || step.status === "error") && (
         <div className="px-3 pb-3 pt-1 border-t border-gray-700/50">
-          <StepDetail step={step} />
+          <StepDetail step={step} expandedQueries={expandedQueries} setExpandedQueries={setExpandedQueries} />
         </div>
       )}
     </div>
@@ -279,7 +280,7 @@ export default function StepCard({ step, label, index, style }: Props) {
  * The "retrieve" step gets special treatment to show chunks nicely.
  * Everything else shows formatted JSON.
  */
-function StepDetail({ step }: { step: PipelineStep }) {
+function StepDetail({ step, expandedQueries, setExpandedQueries }: { step: PipelineStep; expandedQueries: Set<number>; setExpandedQueries: (s: Set<number>) => void }) {
   // --- Error step: show error message prominently ---
   if (step.status === "error") {
     const data = step.data as { message?: string };
@@ -393,39 +394,113 @@ function StepDetail({ step }: { step: PipelineStep }) {
     );
   }
 
-  // --- Retrieve step: show chunks with scores ---
+  // --- Retrieve step: show per-query results + final deduplicated chunks ---
   if (step.step === "retrieve" && "results" in step.data) {
-    const data = step.data as { results?: RetrievedChunk[]; total_retrieved?: number; after_dedup?: number };
+    const data = step.data as {
+      results?: RetrievedChunk[];
+      total_retrieved?: number;
+      after_dedup?: number;
+      per_query?: { query: string; results: RetrievedChunk[] }[];
+    };
     const results = data.results ?? [];
+    const per_query = data.per_query ?? [];
+
+    const toggleQuery = (idx: number) => {
+      const next = new Set(expandedQueries);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      setExpandedQueries(next);
+    };
+
     return (
-      <div className="space-y-2 mt-1">
-        <div className="flex gap-3 text-xs text-gray-500">
-          {data.total_retrieved !== undefined && (
-            <span>Retrieved: {data.total_retrieved}</span>
-          )}
-          {data.after_dedup !== undefined && data.total_retrieved !== data.after_dedup && (
-            <span>After dedup: {data.after_dedup}</span>
-          )}
-        </div>
-        {results.map((chunk, i) => (
-          <div key={i} className="rounded bg-gray-900/60 p-2.5 text-xs space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 truncate max-w-[70%]">{chunk.source}</span>
-              <span
-                className={`font-mono font-medium ${
-                  chunk.score > 0.7
-                    ? "text-green-400"
-                    : chunk.score > 0.5
-                    ? "text-yellow-400"
-                    : "text-gray-500"
-                }`}
-              >
-                {chunk.score.toFixed(3)}
-              </span>
-            </div>
-            <p className="text-gray-300 line-clamp-3 leading-relaxed">{chunk.text}</p>
+      <div className="space-y-3 mt-1">
+        {/* Per-Query Results (only show if multiple queries) */}
+        {per_query.length > 1 && (
+          <div className="space-y-2">
+            <div className="text-xs text-gray-500 font-medium">Query Results</div>
+            {per_query.map((qr, qIdx) => (
+              <div key={qIdx}>
+                <div
+                  className="flex items-center justify-between bg-gray-900/40 rounded px-2.5 py-1.5 cursor-pointer hover:bg-gray-900/60 transition-colors"
+                  onClick={() => toggleQuery(qIdx)}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs text-gray-500 flex-shrink-0">
+                      {expandedQueries.has(qIdx) ? "▼" : "▶"}
+                    </span>
+                    <span className="text-xs text-gray-300 truncate">
+                      Q{qIdx + 1}: {qr.query}
+                    </span>
+                  </div>
+                  <span className="text-xs bg-sky-500/30 text-sky-300 px-2 py-0.5 rounded-full flex-shrink-0 ml-2">
+                    {qr.results.length} hits
+                  </span>
+                </div>
+                {expandedQueries.has(qIdx) && (
+                  <div className="mt-1.5 ml-2.5 space-y-1.5 border-l border-gray-700/50 pl-2.5">
+                    {qr.results.map((chunk, cIdx) => (
+                      <div key={cIdx} className="rounded bg-gray-900/60 p-2 text-xs space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 truncate max-w-[65%]">{chunk.source}</span>
+                          <span
+                            className={`font-mono font-medium ${
+                              chunk.score > 0.7
+                                ? "text-green-400"
+                                : chunk.score > 0.5
+                                ? "text-yellow-400"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {chunk.score.toFixed(3)}
+                          </span>
+                        </div>
+                        <p className="text-gray-300 line-clamp-2 leading-relaxed">{chunk.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="h-px bg-gray-700/30 my-1" />
           </div>
-        ))}
+        )}
+
+        {/* Final Retrieval (deduplicated + top-k) */}
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs text-gray-500 font-medium">Final Retrieval</span>
+            <span className="text-xs text-gray-600">
+              {data.after_dedup !== undefined && data.total_retrieved !== undefined && (
+                <>
+                  {data.total_retrieved} retrieved → {data.after_dedup} kept{" "}
+                  <span className="text-gray-700">(dedup + top-k)</span>
+                </>
+              )}
+            </span>
+          </div>
+          {results.map((chunk, i) => (
+            <div key={i} className="rounded bg-gray-900/60 p-2.5 text-xs space-y-1">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-gray-600 flex-shrink-0">{i + 1}.</span>
+                  <span className="text-gray-500 truncate max-w-[65%]">{chunk.source}</span>
+                </div>
+                <span
+                  className={`font-mono font-medium ${
+                    chunk.score > 0.7
+                      ? "text-green-400"
+                      : chunk.score > 0.5
+                      ? "text-yellow-400"
+                      : "text-gray-500"
+                  }`}
+                >
+                  {chunk.score.toFixed(3)}
+                </span>
+              </div>
+              <p className="text-gray-300 line-clamp-3 leading-relaxed">{chunk.text}</p>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

@@ -57,7 +57,7 @@ export interface StepDataMap {
   store:     { collection?: string; total_stored?: number };
   route:     { query?: string; strategy?: string; reason?: string };
   transform: { method?: string; original?: string; queries?: string[]; note?: string; hypothesis?: string; broad_query?: string };
-  retrieve:  { query?: string; query_count?: number; results?: RetrievedChunk[]; total_retrieved?: number; after_dedup?: number };
+  retrieve:  { query?: string; query_count?: number; per_query?: { query: string; results: RetrievedChunk[] }[]; results?: RetrievedChunk[]; total_retrieved?: number; after_dedup?: number };
   rerank:    { before_rerank?: number; after_rerank?: number; results?: RerankChunk[] };
   evaluate:  { verdicts?: ChunkVerdict[]; decision?: string; kept_count?: number; filtered_count?: number };
   web_search: { query?: string; result_count?: number; results?: WebSearchResult[]; note?: string; reason?: string };

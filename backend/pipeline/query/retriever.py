@@ -26,14 +26,17 @@ def retrieve_multi(queries: list[str]) -> dict:
         {
             "total_retrieved": 15,      # before dedup
             "after_dedup": 8,           # after dedup
+            "per_query": [{ query: "...", results: [...] }, ...],  # per-query breakdown
             "results": [{ text, score, source, chunk_index }, ...]
         }
     """
     all_chunks = []
+    per_query = []
 
     for query in queries:
         query_embedding = embed_query(query)
         chunks = query_collection(query_embedding, top_k=TOP_K)
+        per_query.append({"query": query, "results": chunks})
         all_chunks.extend(chunks)
 
     total_retrieved = len(all_chunks)
@@ -51,5 +54,6 @@ def retrieve_multi(queries: list[str]) -> dict:
     return {
         "total_retrieved": total_retrieved,
         "after_dedup": len(deduped),
+        "per_query": per_query,
         "results": deduped,
     }

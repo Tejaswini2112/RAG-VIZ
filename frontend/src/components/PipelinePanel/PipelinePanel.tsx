@@ -29,7 +29,7 @@ const STEP_LABELS: Record<string, string> = {
   store:     "Store in Vector DB",
   route:     "Route Query",
   transform: "Transform Query",
-  retrieve:  "Retrieve Chunks",
+  retrieve:  "Retrieval",
   rerank:    "Re-rank Chunks",
   evaluate:  "Evaluate Relevance",
   web_search: "Web Search",

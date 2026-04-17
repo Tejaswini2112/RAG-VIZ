@@ -71,6 +71,7 @@ async def query_documents(request: QueryRequest):
             await tracer.emit("retrieve", "complete", {
                 "total_retrieved": retrieval_result["total_retrieved"],
                 "after_dedup": retrieval_result["after_dedup"],
+                "per_query": retrieval_result["per_query"],
                 "results": retrieval_result["results"],
             })
 
