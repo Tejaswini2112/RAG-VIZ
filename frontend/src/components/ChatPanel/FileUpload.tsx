@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface Props {
   onUpload: (file: File) => void;
@@ -8,48 +8,118 @@ interface Props {
 
 export default function FileUpload({ onUpload, isUploading, docReady }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onUpload(file);
-    // Reset input value so the same file can be re-uploaded
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) onUpload(file);
+  };
+
+  // ── Uploading ────────────────────────────────────────────────────────────
+  if (isUploading) {
+    return (
+      <div className="flex items-center justify-center gap-3 py-5 rounded-xl border border-blue-500/20 bg-blue-500/5">
+        <span className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin flex-shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-gray-300">Processing document…</p>
+          <p className="text-xs text-gray-500 mt-0.5">Chunking · Embedding · Storing</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Ready ────────────────────────────────────────────────────────────────
+  if (docReady) {
+    return (
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-green-500/30 bg-green-500/5">
+        <div className="flex items-center gap-2.5">
+          <span className="w-6 h-6 rounded-md bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3,9 6,12 13,4" />
+            </svg>
+          </span>
+          <p className="text-sm font-medium text-green-400">Document ready</p>
+        </div>
+        <label
+          htmlFor="file-upload-ready"
+          className="text-xs text-gray-500 hover:text-gray-300 cursor-pointer transition-colors underline underline-offset-2"
+        >
+          Change file
+        </label>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.txt,.docx"
+          onChange={handleChange}
+          className="hidden"
+          id="file-upload-ready"
+        />
+      </div>
+    );
+  }
+
+  // ── Idle drop zone ───────────────────────────────────────────────────────
   return (
-    <div className="flex items-center gap-3">
+    <>
       <input
         ref={inputRef}
         type="file"
         accept=".pdf,.txt,.docx"
         onChange={handleChange}
-        disabled={isUploading}
         className="hidden"
         id="file-upload"
       />
       <label
         htmlFor="file-upload"
-        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm
-                    border border-gray-700 hover:border-gray-500 transition-colors
-                    ${isUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`flex flex-col items-center justify-center gap-2.5 py-7 rounded-xl border-2 border-dashed cursor-pointer transition-all select-none
+          ${isDragging
+            ? "border-blue-500 bg-blue-500/10 scale-[1.01]"
+            : "border-gray-700 hover:border-gray-500 hover:bg-gray-800/40"
+          }`}
       >
-        {isUploading ? (
-          <>
-            <span className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
-            Processing...
-          </>
-        ) : (
-          "Upload Document"
-        )}
+        {/* Upload cloud icon */}
+        <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all
+          ${isDragging ? "bg-blue-500/20 text-blue-400 scale-110" : "bg-gray-800 text-gray-500"}`}
+        >
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 15V7m0 0-3 3m3-3 3 3" />
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+          </svg>
+        </div>
+
+        <div className="text-center">
+          <p className={`text-sm font-medium transition-colors ${isDragging ? "text-blue-400" : "text-gray-300"}`}>
+            {isDragging ? "Release to upload" : "Drop your document here"}
+          </p>
+          {!isDragging && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              or <span className="text-blue-400 hover:text-blue-300">click to browse</span>
+            </p>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-700 font-mono tracking-widest">PDF · TXT · DOCX</p>
       </label>
-
-      {docReady && !isUploading && (
-        <span className="text-xs text-green-400 flex items-center gap-1">
-          <span>✓</span> Ready
-        </span>
-      )}
-
-      <span className="text-xs text-gray-600">PDF, TXT, DOCX</span>
-    </div>
+    </>
   );
 }

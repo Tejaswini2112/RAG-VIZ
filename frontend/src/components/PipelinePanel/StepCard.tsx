@@ -1,11 +1,114 @@
 import { useState } from "react";
+import React from "react";
 import { PipelineStep, RetrievedChunk, RerankChunk, ChunkVerdict, WebSearchResult } from "../../types/pipeline";
 
 interface Props {
   step: PipelineStep;
   label: string;
   index: number;
+  style?: React.CSSProperties;
 }
+
+// Accent color per step type — bg for the chip, text for the SVG stroke
+const stepColors: Record<string, { bg: string; text: string }> = {
+  load:       { bg: "bg-blue-500/20",    text: "text-blue-400" },
+  chunk:      { bg: "bg-amber-500/20",   text: "text-amber-400" },
+  embed:      { bg: "bg-purple-500/20",  text: "text-purple-400" },
+  store:      { bg: "bg-emerald-500/20", text: "text-emerald-400" },
+  route:      { bg: "bg-yellow-500/20",  text: "text-yellow-400" },
+  transform:  { bg: "bg-cyan-500/20",    text: "text-cyan-400" },
+  retrieve:   { bg: "bg-sky-500/20",     text: "text-sky-400" },
+  rerank:     { bg: "bg-indigo-500/20",  text: "text-indigo-400" },
+  evaluate:   { bg: "bg-green-500/20",   text: "text-green-400" },
+  web_search: { bg: "bg-sky-500/20",     text: "text-sky-400" },
+  context:    { bg: "bg-teal-500/20",    text: "text-teal-400" },
+  verify:     { bg: "bg-emerald-500/20", text: "text-emerald-400" },
+  generate:   { bg: "bg-violet-500/20",  text: "text-violet-400" },
+  error:      { bg: "bg-red-500/20",     text: "text-red-400" },
+};
+
+// Icon per step type — inline SVGs so there's no icon library dependency
+const stepIcons: Record<string, JSX.Element> = {
+  load: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="1" width="9" height="12" rx="1" />
+      <polyline points="9,1 13,5 13,14 4,14" />
+      <line x1="4" y1="6" x2="8" y2="6" /><line x1="4" y1="8.5" x2="8" y2="8.5" /><line x1="4" y1="11" x2="7" y2="11" />
+    </svg>
+  ),
+  chunk: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <line x1="8" y1="2" x2="8" y2="14" /><line x1="3" y1="5" x2="6" y2="8" /><line x1="3" y1="11" x2="6" y2="8" />
+      <line x1="13" y1="5" x2="10" y2="8" /><line x1="13" y1="11" x2="10" y2="8" />
+    </svg>
+  ),
+  embed: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="4" cy="8" r="1.5" /><circle cx="12" cy="4" r="1.5" /><circle cx="12" cy="12" r="1.5" />
+      <line x1="5.5" y1="7.2" x2="10.5" y2="4.8" /><line x1="5.5" y1="8.8" x2="10.5" y2="11.2" />
+    </svg>
+  ),
+  store: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <ellipse cx="8" cy="5" rx="5" ry="2" /><path d="M3 5v6c0 1.1 2.24 2 5 2s5-.9 5-2V5" /><line x1="3" y1="8" x2="13" y2="8" />
+    </svg>
+  ),
+  route: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="3" cy="8" r="1.5" /><circle cx="13" cy="4" r="1.5" /><circle cx="13" cy="12" r="1.5" />
+      <line x1="4.5" y1="7.3" x2="11.5" y2="4.7" /><line x1="4.5" y1="8.7" x2="11.5" y2="11.3" />
+      <polyline points="9,3 11.5,4.5 9,6" />
+    </svg>
+  ),
+  transform: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M2 5h8M2 8h6M2 11h9" /><polyline points="12,3 14,5 12,7" /><polyline points="10,9 12,11 10,13" />
+    </svg>
+  ),
+  retrieve: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="7" cy="7" r="4" /><line x1="10.5" y1="10.5" x2="14" y2="14" />
+    </svg>
+  ),
+  rerank: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <line x1="3" y1="4" x2="13" y2="4" /><line x1="3" y1="8" x2="10" y2="8" /><line x1="3" y1="12" x2="7" y2="12" />
+      <polyline points="12,6 14,8 12,10" />
+    </svg>
+  ),
+  evaluate: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <polyline points="3,9 6,12 13,4" />
+    </svg>
+  ),
+  web_search: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="8" r="6" /><path d="M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12" /><line x1="2" y1="8" x2="14" y2="8" />
+    </svg>
+  ),
+  context: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="3" width="5" height="5" rx="0.5" /><rect x="9" y="3" width="5" height="5" rx="0.5" />
+      <rect x="2" y="10" width="5" height="3" rx="0.5" /><rect x="9" y="10" width="5" height="3" rx="0.5" />
+    </svg>
+  ),
+  verify: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 2L3 4.5v4c0 2.8 2.1 5.4 5 6 2.9-.6 5-3.2 5-6v-4L8 2z" /><polyline points="5.5,8.5 7,10 10.5,6" />
+    </svg>
+  ),
+  generate: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 2a5 5 0 0 1 0 10H4l-2 2V8a5 5 0 0 1 6-6z" />
+      <line x1="5" y1="7" x2="11" y2="7" /><line x1="5" y1="9.5" x2="9" y2="9.5" />
+    </svg>
+  ),
+  error: (
+    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="8" r="6" /><line x1="8" y1="5" x2="8" y2="8.5" /><circle cx="8" cy="11" r="0.5" fill="currentColor" />
+    </svg>
+  ),
+};
 
 // Visual treatment per status
 const statusStyles = {
@@ -31,7 +134,7 @@ const statusStyles = {
   },
 };
 
-export default function StepCard({ step, label, index }: Props) {
+export default function StepCard({ step, label, index, style }: Props) {
   // Auto-expand error steps so users see the error message immediately
   const [expanded, setExpanded] = useState(step.status === "error");
 
@@ -40,14 +143,21 @@ export default function StepCard({ step, label, index }: Props) {
   const statusLabel = step.status === "running" ? "running..." : step.status;
 
   return (
-    <div className={`rounded-lg border ${styles.border} ${styles.bg} transition-all`}>
+    <div className={`rounded-lg border ${styles.border} ${styles.bg} transition-all animate-slide-in`} style={style}>
       {/* Card header — always visible, clickable to expand */}
       <div
         className={`flex items-center justify-between px-3 py-2.5 ${hasData ? "cursor-pointer" : ""}`}
         onClick={() => hasData && setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-xs text-gray-600 w-4 text-right flex-shrink-0">{index}</span>
+          {(() => {
+            const color = stepColors[step.step] ?? { bg: "bg-gray-700/50", text: "text-gray-400" };
+            return (
+              <span className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${color.bg} ${color.text}`}>
+                {stepIcons[step.step] ?? <span className="text-xs font-medium">{index}</span>}
+              </span>
+            );
+          })()}
           <span className="text-sm font-medium truncate">{label}</span>
           <span className={`text-xs ${styles.badge}`}>{statusLabel}</span>
         </div>

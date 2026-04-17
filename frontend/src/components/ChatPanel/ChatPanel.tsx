@@ -63,9 +63,24 @@ export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-none p-4 border-b border-gray-800">
-        <h1 className="text-base font-semibold tracking-tight">RAG Visualizer</h1>
-        <p className="text-xs text-gray-500 mt-0.5">Upload a document, then ask questions</p>
+      <div className="flex-none border-b border-gray-800">
+        <div className="h-0.5 bg-gradient-to-r from-blue-500 via-blue-400 to-transparent" />
+        <div className="p-4 flex items-center gap-3">
+          {/* Logo mark — graph/network icon suggesting retrieval */}
+          <div className="w-8 h-8 rounded-lg bg-blue-600/15 border border-blue-500/25 flex items-center justify-center flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="3"  cy="8"  r="2"   fill="#60a5fa" />
+              <circle cx="13" cy="4"  r="1.5" fill="#818cf8" />
+              <circle cx="13" cy="12" r="1.5" fill="#818cf8" />
+              <line x1="5" y1="7.3" x2="11" y2="4.7" stroke="#60a5fa" strokeWidth="1" strokeOpacity="0.7" />
+              <line x1="5" y1="8.7" x2="11" y2="11.3" stroke="#60a5fa" strokeWidth="1" strokeOpacity="0.7" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-base font-semibold tracking-tight">RAG Visualizer</h1>
+            <p className="text-xs text-gray-500 mt-0.5">Upload a document, then ask questions</p>
+          </div>
+        </div>
       </div>
 
       {/* Upload area */}
