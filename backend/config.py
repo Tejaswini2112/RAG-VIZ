@@ -7,8 +7,14 @@ load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
+# Web search (optional — CRAG fallback)
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
 # Embeddings — runs locally, no API key needed
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+# Re-ranking — cross-encoder, also runs locally
+RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 # Vector DB — stored as a folder on disk
 CHROMA_PATH = "./chroma_db"

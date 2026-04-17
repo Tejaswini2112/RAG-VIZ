@@ -31,6 +31,7 @@ export function useQuery(onStep: (step: PipelineStep) => void) {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Query failed";
+      console.error("[Query Error]", msg, e);
       setError(msg);
     } finally {
       setIsQuerying(false);

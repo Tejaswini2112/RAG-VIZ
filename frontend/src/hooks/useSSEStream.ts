@@ -59,8 +59,12 @@ export function useSSEStream() {
                 try {
                   const step = JSON.parse(json) as PipelineStep;
                   onStep(step);
-                } catch {
-                  // Malformed JSON — skip silently
+                  // Log errors and important steps for debugging
+                  if (step.status === "error") {
+                    console.error(`[Pipeline Error] Step: ${step.step}`, step.data);
+                  }
+                } catch (parseError) {
+                  console.error("[SSE Parse Error] Malformed JSON:", json, parseError);
                 }
               }
             }

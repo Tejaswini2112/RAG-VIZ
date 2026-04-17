@@ -7,14 +7,19 @@ interface Props {
 
 // Human-readable label for each step name
 const STEP_LABELS: Record<string, string> = {
-  load:     "Load Document",
-  chunk:    "Chunk Text",
-  embed:    "Generate Embeddings",
-  store:    "Store in Vector DB",
-  retrieve: "Retrieve Chunks",
-  context:  "Build Context",
-  generate: "Generate Answer",
-  error:    "Error",
+  load:      "Load Document",
+  chunk:     "Chunk Text",
+  embed:     "Generate Embeddings",
+  store:     "Store in Vector DB",
+  route:     "Route Query",
+  transform: "Transform Query",
+  retrieve:  "Retrieve Chunks",
+  rerank:    "Re-rank Chunks",
+  evaluate:  "Evaluate Relevance",
+  web_search: "Web Search",
+  context:   "Build Context",
+  generate:  "Generate Answer",
+  error:     "Error",
 };
 
 export default function PipelinePanel({ steps }: Props) {
