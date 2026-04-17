@@ -61,7 +61,7 @@ export interface StepDataMap {
   rerank:    { before_rerank?: number; after_rerank?: number; results?: RerankChunk[] };
   evaluate:  { verdicts?: ChunkVerdict[]; decision?: string; kept_count?: number; filtered_count?: number };
   web_search: { query?: string; result_count?: number; results?: WebSearchResult[]; note?: string; reason?: string };
-  context:   { chunk_count?: number; token_count?: number };
+  context:   { chunk_count?: number; token_count?: number; prompt?: string };
   generate:  { model: string; attempt?: number };
   verify:    { attempt?: number; faithfulness?: string; faithfulness_reason?: string; relevance?: string; relevance_reason?: string; issues?: string[]; accepted?: boolean; retried?: boolean };
   done:      { answer?: string; chunk_count?: number };

@@ -146,6 +146,7 @@ async def query_documents(request: QueryRequest):
             await tracer.emit("context", "complete", {
                 "chunk_count": len(chunks),
                 "token_count": token_count,
+                "prompt": prompt,
             })
 
             # Step 8: Generate answer

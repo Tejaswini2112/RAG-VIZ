@@ -9,6 +9,96 @@ interface Props {
   style?: React.CSSProperties;
 }
 
+function getStepSummary(step: PipelineStep): string | null {
+  if (step.status !== "complete") return null;
+  const data = step.data as any;
+
+  switch (step.step) {
+    case "load":
+      return data.filename ?? null;
+
+    case "chunk":
+      return data.chunk_count ? `${data.chunk_count} chunks` : null;
+
+    case "embed": {
+      const dims = data.dimensions ? `${data.dimensions}-dim` : null;
+      const vecs = data.vectors_created ? `${data.vectors_created} vectors` : null;
+      if (dims && vecs) return `${vecs} · ${dims}`;
+      return vecs ?? dims ?? null;
+    }
+
+    case "store": {
+      if (!data.total_stored) return null;
+      const coll = data.collection ? ` in ${data.collection}` : "";
+      return `${data.total_stored} stored${coll}`;
+    }
+
+    case "route": {
+      const labels: Record<string, string> = {
+        none: "none",
+        multi_query: "multi_query",
+        decomposition: "decomposition",
+        hyde: "hyde",
+        step_back: "step_back",
+      };
+      return data.strategy ? (labels[data.strategy] ?? data.strategy) : null;
+    }
+
+    case "transform": {
+      const method = data.method ?? "unknown";
+      if (data.queries?.length) return `${method} · ${data.queries.length} queries`;
+      if (data.hypothesis) return `${method} (hypothesis)`;
+      if (data.broad_query) return `${method} (broad query)`;
+      return method;
+    }
+
+    case "retrieve": {
+      const count = data.after_dedup ?? data.total_retrieved;
+      return count ? `${count} chunks` : null;
+    }
+
+    case "rerank":
+      if (data.before_rerank && data.after_rerank)
+        return `${data.before_rerank} → ${data.after_rerank} chunks`;
+      return null;
+
+    case "evaluate": {
+      const labels: Record<string, string> = {
+        documents: "Use Docs",
+        web_search: "Use Web",
+        both: "Use Both",
+      };
+      const decision = labels[data.decision ?? "documents"] ?? "Use Docs";
+      if (data.kept_count) return `${decision} · ${data.kept_count} kept`;
+      return decision;
+    }
+
+    case "web_search":
+      return data.result_count ? `${data.result_count} results` : null;
+
+    case "context": {
+      const chunks = data.chunk_count ? `${data.chunk_count} chunks` : null;
+      const tokens = data.token_count ? `~${data.token_count} tokens` : null;
+      if (chunks && tokens) return `${chunks} · ${tokens}`;
+      return chunks ?? tokens ?? null;
+    }
+
+    case "generate": {
+      const attempt = data.attempt ?? 1;
+      return attempt > 1 ? `attempt ${attempt}` : null;
+    }
+
+    case "verify":
+      if (data.retried) return "Issues · retrying";
+      if (data.accepted) return `Accepted · ${data.faithfulness ?? ""}`.trim();
+      if (data.issues?.length) return "Issues remain";
+      return null;
+
+    default:
+      return null;
+  }
+}
+
 // Accent color per step type — bg for the chip, text for the SVG stroke
 const stepColors: Record<string, { bg: string; text: string }> = {
   load:       { bg: "bg-blue-500/20",    text: "text-blue-400" },
@@ -141,6 +231,7 @@ export default function StepCard({ step, label, index, style }: Props) {
   const styles = statusStyles[step.status];
   const hasData = Object.keys(step.data).length > 0;
   const statusLabel = step.status === "running" ? "running..." : step.status;
+  const summary = getStepSummary(step);
 
   return (
     <div className={`rounded-lg border ${styles.border} ${styles.bg} transition-all animate-slide-in`} style={style}>
@@ -159,6 +250,9 @@ export default function StepCard({ step, label, index, style }: Props) {
             );
           })()}
           <span className="text-sm font-medium truncate">{label}</span>
+          {summary && (
+            <span className="text-xs text-gray-500 truncate max-w-[160px] shrink-0">· {summary}</span>
+          )}
           <span className={`text-xs ${styles.badge}`}>{statusLabel}</span>
         </div>
 
