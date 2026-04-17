@@ -14,6 +14,7 @@ from pipeline.query.evaluator import evaluate_chunks
 from pipeline.query.web_searcher import web_search
 from pipeline.query.context_builder import build_context
 from pipeline.query.generator import generate
+from pipeline.query.verifier import verify_answer
 
 router = APIRouter()
 
@@ -156,8 +157,97 @@ async def query_documents(request: QueryRequest):
                 return
             await tracer.emit("generate", "complete", {"model": "claude-sonnet-4-6"})
 
-            # Done
-            await tracer.emit("done", "complete", {"answer": answer})
+            # Step 9: Verify — faithfulness + relevance check
+            await tracer.emit("verify", "running", {"attempt": 1})
+            try:
+                verification = await loop.run_in_executor(
+                    None, lambda: verify_answer(request.question, chunks, answer)
+                )
+            except Exception as e:
+                error_msg = f"Verify step failed: {type(e).__name__}: {str(e)}"
+                print(f"ERROR: {error_msg}")
+                print(traceback.format_exc())
+                # Verification failure shouldn't block the answer — serve it anyway
+                await tracer.emit("verify", "complete", {
+                    "attempt": 1,
+                    "faithfulness": "unknown",
+                    "faithfulness_reason": f"Verification failed: {str(e)}",
+                    "relevance": "unknown",
+                    "relevance_reason": f"Verification failed: {str(e)}",
+                    "issues": [],
+                    "accepted": True,
+                    "retried": False,
+                })
+                await tracer.emit("done", "complete", {"answer": answer})
+                return
+
+            if verification["accepted"]:
+                # First attempt passed — emit and finish
+                await tracer.emit("verify", "complete", {
+                    **verification,
+                    "attempt": 1,
+                    "retried": False,
+                })
+                await tracer.emit("done", "complete", {"answer": answer})
+            else:
+                # Issues found — emit attempt 1 result, then retry
+                await tracer.emit("verify", "complete", {
+                    **verification,
+                    "attempt": 1,
+                    "retried": True,
+                })
+
+                # Build a corrective prompt that tells the LLM what to fix
+                issues_text = "\n".join(f"- {issue}" for issue in verification["issues"])
+                corrective_note = (
+                    f"\n\nIMPORTANT: Your previous answer had these issues:\n"
+                    f"{issues_text}\n"
+                    f"Please generate a new answer that avoids these problems. "
+                    f"Only make claims that are directly supported by the context."
+                )
+                corrective_prompt = prompt + corrective_note
+
+                # Retry generation
+                await tracer.emit("generate", "running", {
+                    "model": "claude-sonnet-4-6",
+                    "attempt": 2,
+                })
+                try:
+                    answer = await loop.run_in_executor(
+                        None, generate, corrective_prompt
+                    )
+                except Exception as e:
+                    await tracer.emit("generate", "error", {"message": str(e)})
+                    return
+                await tracer.emit("generate", "complete", {
+                    "model": "claude-sonnet-4-6",
+                    "attempt": 2,
+                })
+
+                # Verify the retry (but accept regardless — no infinite loops)
+                await tracer.emit("verify", "running", {"attempt": 2})
+                try:
+                    verification2 = await loop.run_in_executor(
+                        None, lambda: verify_answer(request.question, chunks, answer)
+                    )
+                    await tracer.emit("verify", "complete", {
+                        **verification2,
+                        "attempt": 2,
+                        "retried": False,
+                    })
+                except Exception:
+                    await tracer.emit("verify", "complete", {
+                        "attempt": 2,
+                        "faithfulness": "unknown",
+                        "faithfulness_reason": "Retry verification failed",
+                        "relevance": "unknown",
+                        "relevance_reason": "Retry verification failed",
+                        "issues": [],
+                        "accepted": True,
+                        "retried": False,
+                    })
+
+                await tracer.emit("done", "complete", {"answer": answer})
 
         except Exception as e:
             error_msg = f"Pipeline error: {type(e).__name__}: {str(e)}"

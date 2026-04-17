@@ -17,7 +17,8 @@ const STEP_LABELS: Record<string, string> = {
   rerank:    "Re-rank Chunks",
   evaluate:  "Evaluate Relevance",
   web_search: "Web Search",
-  context:   "Build Context",
+  context:    "Build Context",
+  verify:     "Verify Answer",
   generate:  "Generate Answer",
   error:     "Error",
 };
@@ -45,14 +46,26 @@ export default function PipelinePanel({ steps }: Props) {
             </p>
           </div>
         ) : (
-          visibleSteps.map((step, i) => (
-            <StepCard
-              key={step.step}
-              step={step}
-              label={STEP_LABELS[step.step] ?? step.step}
-              index={i + 1}
-            />
-          ))
+          visibleSteps.map((step, i) => {
+            // Retry-able steps (generate, verify) include an attempt number
+            // to distinguish attempt 1 from attempt 2 in React keys
+            const attempt = (step.data && "attempt" in step.data)
+              ? (step.data as { attempt?: number }).attempt
+              : undefined;
+            const key = attempt ? `${step.step}-${attempt}` : step.step;
+            const label = attempt && attempt > 1
+              ? `${STEP_LABELS[step.step] ?? step.step} (retry)`
+              : STEP_LABELS[step.step] ?? step.step;
+
+            return (
+              <StepCard
+                key={key}
+                step={step}
+                label={label}
+                index={i + 1}
+              />
+            );
+          })
         )}
       </div>
     </div>

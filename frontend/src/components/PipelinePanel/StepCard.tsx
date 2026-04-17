@@ -353,6 +353,84 @@ function StepDetail({ step }: { step: PipelineStep }) {
     );
   }
 
+  // --- Verify step: show faithfulness + relevance verdicts ---
+  if (step.step === "verify" && "faithfulness" in step.data) {
+    const data = step.data as {
+      attempt?: number; faithfulness?: string; faithfulness_reason?: string;
+      relevance?: string; relevance_reason?: string;
+      issues?: string[]; accepted?: boolean; retried?: boolean;
+    };
+
+    const verdictColors: Record<string, string> = {
+      faithful:     "text-green-400 bg-green-500/10 border-green-500/30",
+      minor_issues: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
+      hallucinated: "text-red-400 bg-red-500/10 border-red-500/30",
+      relevant:     "text-green-400 bg-green-500/10 border-green-500/30",
+      partial:      "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
+      off_topic:    "text-red-400 bg-red-500/10 border-red-500/30",
+      unknown:      "text-gray-400 bg-gray-500/10 border-gray-500/30",
+    };
+
+    const faithColors = verdictColors[data.faithfulness ?? "unknown"] ?? verdictColors.unknown;
+    const relColors = verdictColors[data.relevance ?? "unknown"] ?? verdictColors.unknown;
+
+    return (
+      <div className="space-y-2.5 mt-1">
+        {/* Overall decision */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            Attempt {data.attempt ?? 1}
+          </span>
+          {data.retried ? (
+            <span className="text-xs font-medium text-orange-400">Issues found — retrying</span>
+          ) : data.accepted ? (
+            <span className="text-xs font-medium text-green-400">Accepted</span>
+          ) : (
+            <span className="text-xs font-medium text-red-400">Issues remain</span>
+          )}
+        </div>
+
+        {/* Faithfulness verdict */}
+        <div className="rounded bg-gray-900/60 p-2 text-xs space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">Faithfulness</span>
+            <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${faithColors}`}>
+              {(data.faithfulness ?? "unknown").replace("_", " ")}
+            </span>
+          </div>
+          {data.faithfulness_reason && (
+            <p className="text-gray-400 italic">{data.faithfulness_reason}</p>
+          )}
+        </div>
+
+        {/* Relevance verdict */}
+        <div className="rounded bg-gray-900/60 p-2 text-xs space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">Relevance</span>
+            <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${relColors}`}>
+              {(data.relevance ?? "unknown").replace("_", " ")}
+            </span>
+          </div>
+          {data.relevance_reason && (
+            <p className="text-gray-400 italic">{data.relevance_reason}</p>
+          )}
+        </div>
+
+        {/* Issues list (if any) */}
+        {data.issues && data.issues.length > 0 && (
+          <div className="rounded bg-red-900/20 p-2 text-xs border border-red-500/20">
+            <span className="text-red-300 font-medium">Issues:</span>
+            <ul className="list-disc list-inside mt-1 space-y-0.5 text-red-200/80">
+              {data.issues.map((issue, i) => (
+                <li key={i}>{issue}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // --- Default: render all data fields as key-value pairs ---
   return (
     <div className="space-y-1 mt-1">

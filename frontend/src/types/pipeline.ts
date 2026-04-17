@@ -19,6 +19,7 @@ export type StepName =
   | "web_search"  // Phase 4: web search fallback
   | "context"
   | "generate"
+  | "verify"      // Phase 5: response verification
   // Control
   | "done"
   | "error";
@@ -61,7 +62,8 @@ export interface StepDataMap {
   evaluate:  { verdicts?: ChunkVerdict[]; decision?: string; kept_count?: number; filtered_count?: number };
   web_search: { query?: string; result_count?: number; results?: WebSearchResult[]; note?: string; reason?: string };
   context:   { chunk_count?: number; token_count?: number };
-  generate:  { model: string };
+  generate:  { model: string; attempt?: number };
+  verify:    { attempt?: number; faithfulness?: string; faithfulness_reason?: string; relevance?: string; relevance_reason?: string; issues?: string[]; accepted?: boolean; retried?: boolean };
   done:      { answer?: string; chunk_count?: number };
   error:     { message: string };
 }

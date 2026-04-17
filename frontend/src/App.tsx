@@ -20,10 +20,23 @@ export default function App() {
    * This is how "running → complete" transitions work without duplicating cards:
    *   1. Backend emits { step: "retrieve", status: "running" }  → card appears with spinner
    *   2. Backend emits { step: "retrieve", status: "complete" } → same card updates to checkmark
+   *
+   * For retry-able steps (generate, verify), the "attempt" field in data
+   * distinguishes attempt 1 from attempt 2 so they appear as separate cards.
    */
   const addStep = useCallback((step: PipelineStep) => {
+    // Steps with an "attempt" field use attempt number as part of their identity
+    const attempt = (step.data && typeof step.data === "object" && "attempt" in step.data)
+      ? (step.data as { attempt?: number }).attempt ?? 1
+      : 1;
+
     setSteps((prev) => {
-      const idx = prev.findIndex((s) => s.step === step.step);
+      const idx = prev.findIndex((s) => {
+        const sAttempt = (s.data && typeof s.data === "object" && "attempt" in s.data)
+          ? (s.data as { attempt?: number }).attempt ?? 1
+          : 1;
+        return s.step === step.step && sAttempt === attempt;
+      });
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx] = step;
