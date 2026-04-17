@@ -1,0 +1,26 @@
+# Environment variables — never commit secrets
+.env
+
+# Python virtual environment
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ChromaDB — generated vector database (rebuild from source docs)
+backend/chroma_db/
+
+# Uploaded documents — user data, not source code
+backend/uploads/
+
+# Frontend dependencies
+frontend/node_modules/
+frontend/dist/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS artifacts
+.DS_Store
+Thumbs.db
