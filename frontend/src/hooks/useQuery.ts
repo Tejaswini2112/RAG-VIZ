@@ -6,7 +6,7 @@ export function useQuery(onStep: (step: PipelineStep) => void) {
   const [isQuerying, setIsQuerying] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { startStream } = useSSEStream();
+  const { startStream, abortStream } = useSSEStream();
 
   const submitQuery = async (question: string) => {
     setIsQuerying(true);
@@ -30,13 +30,19 @@ export function useQuery(onStep: (step: PipelineStep) => void) {
         }
       );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Query failed";
-      console.error("[Query Error]", msg, e);
-      setError(msg);
+      if (e instanceof DOMException && e.name === "AbortError") {
+        // User cancelled — not an error
+      } else {
+        const msg = e instanceof Error ? e.message : "Query failed";
+        console.error("[Query Error]", msg, e);
+        setError(msg);
+      }
     } finally {
       setIsQuerying(false);
     }
   };
 
-  return { submitQuery, isQuerying, answer, error };
+  const cancelQuery = () => abortStream();
+
+  return { submitQuery, cancelQuery, isQuerying, answer, error };
 }

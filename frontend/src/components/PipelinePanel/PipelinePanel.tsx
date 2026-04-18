@@ -30,7 +30,7 @@ const STEP_LABELS: Record<string, string> = {
   route:     "Route Query",
   transform: "Transform Query",
   retrieve:  "Retrieval",
-  rerank:    "Re-rank Chunks",
+  rerank:    "Re-Ranking",
   evaluate:  "Evaluate Relevance",
   web_search: "Web Search",
   context:    "Build Context",

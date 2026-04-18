@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { PipelineStep } from "../types/pipeline";
 
 /**
@@ -15,6 +15,11 @@ import { PipelineStep } from "../types/pipeline";
  */
 export function useSSEStream() {
   const [isStreaming, setIsStreaming] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const abortStream = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   const startStream = useCallback(
     async (
@@ -22,9 +27,12 @@ export function useSSEStream() {
       options: RequestInit,
       onStep: (step: PipelineStep) => void
     ) => {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setIsStreaming(true);
       try {
-        const response = await fetch(url, options);
+        const response = await fetch(url, { ...options, signal: controller.signal });
 
         if (!response.ok) {
           const text = await response.text();
@@ -72,10 +80,11 @@ export function useSSEStream() {
         }
       } finally {
         setIsStreaming(false);
+        abortControllerRef.current = null;
       }
     },
     []
   );
 
-  return { startStream, isStreaming };
+  return { startStream, abortStream, isStreaming };
 }

@@ -48,6 +48,12 @@ export default function App() {
 
   const clearSteps = useCallback(() => setSteps([]), []);
 
+  const terminateRunningSteps = useCallback(() => {
+    setSteps((prev) =>
+      prev.map((s) => (s.status === "running" ? { ...s, status: "terminated" as const } : s))
+    );
+  }, []);
+
   const addMessage = useCallback((msg: Message) => {
     setMessages((prev) => [...prev, msg]);
   }, []);
@@ -61,6 +67,7 @@ export default function App() {
           onAddMessage={addMessage}
           onStep={addStep}
           onClearSteps={clearSteps}
+          onTerminateSteps={terminateRunningSteps}
         />
       </div>
 

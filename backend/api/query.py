@@ -1,7 +1,7 @@
 import asyncio
 import traceback
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -24,13 +24,17 @@ class QueryRequest(BaseModel):
 
 
 @router.post("/query")
-async def query_documents(request: QueryRequest):
+async def query_documents(request: QueryRequest, req: Request):
     tracer = PipelineTracer()
+
+    async def cancelled() -> bool:
+        return await req.is_disconnected()
 
     async def run_pipeline():
         loop = asyncio.get_running_loop()
         try:
             # Step 1: Route — decide which transformation strategy to use
+            if await cancelled(): return
             await tracer.emit("route", "running", {"query": request.question})
             route_result = await loop.run_in_executor(
                 None, route_query, request.question
@@ -42,6 +46,7 @@ async def query_documents(request: QueryRequest):
             })
 
             # Step 2: Transform — apply the chosen strategy
+            if await cancelled(): return
             strategy = route_result["strategy"]
             await tracer.emit("transform", "running", {"method": strategy})
             transform_result = await loop.run_in_executor(
@@ -61,6 +66,7 @@ async def query_documents(request: QueryRequest):
             await tracer.emit("transform", "complete", transform_data)
 
             # Step 3: Retrieve — embed each query, search, merge, deduplicate
+            if await cancelled(): return
             queries = transform_result["queries"]
             await tracer.emit("retrieve", "running", {
                 "query_count": len(queries),
@@ -76,6 +82,7 @@ async def query_documents(request: QueryRequest):
             })
 
             # Step 4: Re-rank — cross-encoder re-scoring + top-K cut
+            if await cancelled(): return
             raw_chunks = retrieval_result["results"]
             await tracer.emit("rerank", "running", {
                 "chunk_count": len(raw_chunks),
@@ -90,6 +97,7 @@ async def query_documents(request: QueryRequest):
             })
 
             # Step 5: Evaluate — CRAG relevance check on each chunk
+            if await cancelled(): return
             reranked_chunks = rerank_result["results"]
             await tracer.emit("evaluate", "running", {
                 "chunk_count": len(reranked_chunks),
@@ -112,6 +120,7 @@ async def query_documents(request: QueryRequest):
                 return
 
             # Step 6: Web search (conditional — only if decision requires it)
+            if await cancelled(): return
             decision = eval_result["decision"]
             chunks = eval_result["kept_chunks"]
 
@@ -140,6 +149,7 @@ async def query_documents(request: QueryRequest):
                 })
 
             # Step 7: Build context
+            if await cancelled(): return
             await tracer.emit("context", "running", {})
             prompt, token_count = await loop.run_in_executor(
                 None, lambda: build_context(request.question, chunks)
@@ -151,6 +161,7 @@ async def query_documents(request: QueryRequest):
             })
 
             # Step 8: Generate answer
+            if await cancelled(): return
             await tracer.emit("generate", "running", {"model": "claude-sonnet-4-6"})
             try:
                 answer = await loop.run_in_executor(None, generate, prompt)
@@ -160,6 +171,7 @@ async def query_documents(request: QueryRequest):
             await tracer.emit("generate", "complete", {"model": "claude-sonnet-4-6"})
 
             # Step 9: Verify — faithfulness + relevance check
+            if await cancelled(): return
             await tracer.emit("verify", "running", {"attempt": 1})
             try:
                 verification = await loop.run_in_executor(
@@ -210,6 +222,7 @@ async def query_documents(request: QueryRequest):
                 corrective_prompt = prompt + corrective_note
 
                 # Retry generation
+                if await cancelled(): return
                 await tracer.emit("generate", "running", {
                     "model": "claude-sonnet-4-6",
                     "attempt": 2,
@@ -227,6 +240,7 @@ async def query_documents(request: QueryRequest):
                 })
 
                 # Verify the retry (but accept regardless — no infinite loops)
+                if await cancelled(): return
                 await tracer.emit("verify", "running", {"attempt": 2})
                 try:
                     verification2 = await loop.run_in_executor(

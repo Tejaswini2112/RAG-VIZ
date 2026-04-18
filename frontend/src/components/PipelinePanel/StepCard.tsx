@@ -226,6 +226,16 @@ const statusStyles = {
     icon: <span className="text-red-400 flex-shrink-0">✗</span>,
     badge: "text-red-400",
   },
+  terminated: {
+    border: "border-orange-500/40",
+    bg: "bg-orange-500/5",
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" className="text-orange-400 flex-shrink-0">
+        <rect x="2.5" y="2.5" width="9" height="9" rx="1.5" />
+      </svg>
+    ),
+    badge: "text-orange-400",
+  },
 };
 
 export default function StepCard({ step, label, index, style }: Props) {
@@ -235,7 +245,10 @@ export default function StepCard({ step, label, index, style }: Props) {
 
   const styles = statusStyles[step.status];
   const hasData = Object.keys(step.data).length > 0;
-  const statusLabel = step.status === "running" ? "running..." : step.status;
+  const statusLabel =
+    step.status === "running" ? "running..." :
+    step.status === "terminated" ? "terminated" :
+    step.status;
   const summary = getStepSummary(step);
 
   return (

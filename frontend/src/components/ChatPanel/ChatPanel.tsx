@@ -11,9 +11,10 @@ interface Props {
   onAddMessage: (msg: Message) => void;
   onStep: (step: PipelineStep) => void;
   onClearSteps: () => void;
+  onTerminateSteps: () => void;
 }
 
-export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps }: Props) {
+export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps, onTerminateSteps }: Props) {
   const [input, setInput] = useState("");
   const [docReady, setDocReady] = useState(false);
 
@@ -23,7 +24,7 @@ export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps
     if (step.step === "done") setDocReady(true);
   });
 
-  const { submitQuery, isQuerying, error: queryError } = useQuery((step) => {
+  const { submitQuery, cancelQuery, isQuerying, error: queryError } = useQuery((step) => {
     // When the query pipeline finishes, extract the answer and add it as a message
     if (step.step === "done" && step.data && "answer" in step.data) {
       onAddMessage({
@@ -116,14 +117,27 @@ export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps
                        focus:ring-1 focus:ring-blue-500 disabled:opacity-40
                        placeholder:text-gray-600"
           />
-          <button
-            type="submit"
-            disabled={!docReady || isQuerying || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed
-                       rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-          >
-            Send
-          </button>
+          {isQuerying ? (
+            <button
+              type="button"
+              onClick={() => { cancelQuery(); onTerminateSteps(); }}
+              className="bg-red-600 hover:bg-red-500 rounded-lg px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <rect x="2" y="2" width="8" height="8" rx="1" />
+              </svg>
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!docReady || !input.trim()}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed
+                         rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+            >
+              Send
+            </button>
+          )}
         </div>
       </form>
     </div>

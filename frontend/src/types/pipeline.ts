@@ -2,7 +2,7 @@
  * Every event the backend emits has this shape.
  * The `data` field is different for each step — see below.
  */
-export type StepStatus = "running" | "complete" | "error";
+export type StepStatus = "running" | "complete" | "error" | "terminated";
 
 export type StepName =
   // Ingest flow
