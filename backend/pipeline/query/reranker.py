@@ -38,7 +38,7 @@ def rerank(question: str, chunks: list[dict]) -> dict:
         }
     """
     if not chunks:
-        return {"before_rerank": 0, "after_rerank": 0, "results": []}
+        return {"before_rerank": 0, "after_rerank": 0, "dropped_count": 0, "results": []}
 
     model = _get_model()
 
@@ -48,17 +48,22 @@ def rerank(question: str, chunks: list[dict]) -> dict:
     # Score all pairs in one batch
     scores = model.predict(pairs)
 
-    # Attach rerank_score to each chunk, keep original cosine score
+    # Attach rerank_score to each chunk, keep original cosine score.
+    # Input order is already cosine-rank order (retriever sorts by score desc),
+    # so the input index is the chunk's original rank.
     scored_chunks = []
-    for chunk, rerank_score in zip(chunks, scores):
+    for original_rank, (chunk, rerank_score) in enumerate(zip(chunks, scores), start=1):
         scored_chunks.append({
             **chunk,
             "original_score": chunk["score"],      # cosine similarity from retrieval
             "rerank_score": float(rerank_score),    # cross-encoder relevance
+            "original_rank": original_rank,         # 1-indexed rank by cosine
         })
 
-    # Sort by rerank_score descending, take top-K
+    # Sort by rerank_score descending, assign new_rank, take top-K
     scored_chunks.sort(key=lambda c: c["rerank_score"], reverse=True)
+    for new_rank, chunk in enumerate(scored_chunks, start=1):
+        chunk["new_rank"] = new_rank
     top_k = scored_chunks[:TOP_K]
 
     # Replace "score" with the rerank score so downstream code uses the better score
@@ -68,5 +73,6 @@ def rerank(question: str, chunks: list[dict]) -> dict:
     return {
         "before_rerank": len(chunks),
         "after_rerank": len(top_k),
+        "dropped_count": len(chunks) - len(top_k),
         "results": top_k,
     }

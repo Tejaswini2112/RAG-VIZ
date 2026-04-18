@@ -93,6 +93,7 @@ async def query_documents(request: QueryRequest, req: Request):
             await tracer.emit("rerank", "complete", {
                 "before_rerank": rerank_result["before_rerank"],
                 "after_rerank": rerank_result["after_rerank"],
+                "dropped_count": rerank_result["dropped_count"],
                 "results": rerank_result["results"],
             })
 
@@ -151,12 +152,15 @@ async def query_documents(request: QueryRequest, req: Request):
             # Step 7: Build context
             if await cancelled(): return
             await tracer.emit("context", "running", {})
-            prompt, token_count = await loop.run_in_executor(
+            from pipeline.query.context_builder import MAX_CONTEXT_TOKENS
+            prompt, token_count, chunk_meta = await loop.run_in_executor(
                 None, lambda: build_context(request.question, chunks)
             )
             await tracer.emit("context", "complete", {
                 "chunk_count": len(chunks),
                 "token_count": token_count,
+                "token_limit": MAX_CONTEXT_TOKENS,
+                "chunks": chunk_meta,
                 "prompt": prompt,
             })
 

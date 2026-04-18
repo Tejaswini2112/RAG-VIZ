@@ -1,6 +1,6 @@
 import { useState } from "react";
 import React from "react";
-import { PipelineStep, RetrievedChunk, RerankChunk, ChunkVerdict, WebSearchResult } from "../../types/pipeline";
+import { PipelineStep, RetrievedChunk, RerankChunk, ChunkVerdict, WebSearchResult, ContextChunk } from "../../types/pipeline";
 
 interface Props {
   step: PipelineStep;
@@ -63,7 +63,7 @@ function getStepSummary(step: PipelineStep): string | null {
 
     case "rerank":
       if (data.before_rerank && data.after_rerank)
-        return `${data.before_rerank} → ${data.after_rerank} chunks`;
+        return `${data.before_rerank} → ${data.after_rerank}`;
       return null;
 
     case "evaluate": {
@@ -102,6 +102,59 @@ function getStepSummary(step: PipelineStep): string | null {
       return null;
   }
 }
+
+// Tallies how chunks moved in re-ranking. `boosted` = moved up in rank,
+// `held` = same rank, `demoted` = moved down but still in final top-K,
+// `dropped` = not in final top-K.
+function getRerankImpact(step: PipelineStep): {
+  boosted: number; held: number; demoted: number; dropped: number;
+} | null {
+  if (step.step !== "rerank" || step.status !== "complete") return null;
+  const data = step.data as { results?: RerankChunk[]; dropped_count?: number };
+  const results = data.results ?? [];
+  if (results.length === 0) return null;
+  let boosted = 0, held = 0, demoted = 0;
+  for (const c of results) {
+    const delta = (c.original_rank ?? 0) - (c.new_rank ?? 0);
+    if (delta > 0) boosted++;
+    else if (delta === 0) held++;
+    else demoted++;
+  }
+  return { boosted, held, demoted, dropped: data.dropped_count ?? 0 };
+}
+
+// Turns a rank delta (original_rank - new_rank) into a badge label + tone.
+// Positive delta means the chunk moved UP in the ranking.
+type DeltaTone = "boost-strong" | "boost" | "same" | "demoted";
+function getDeltaBadge(delta: number): { arrow: string; label: string; tone: DeltaTone } {
+  if (delta >= 4) return { arrow: "↑", label: "strong boost", tone: "boost-strong" };
+  if (delta >= 1) return { arrow: "↑", label: "boost", tone: "boost" };
+  if (delta === 0) return { arrow: "≈", label: "held", tone: "same" };
+  return { arrow: "↓", label: "demoted", tone: "demoted" };
+}
+
+// One-line heuristic reason for a chunk's rank change. The cross-encoder
+// doesn't produce prose, so we describe the movement instead.
+function getDeltaReason(delta: number, newRank: number): string {
+  if (delta >= 4)
+    return `Jumped ${delta} positions — cross-encoder found much deeper query relevance`;
+  if (delta >= 2)
+    return `Promoted ${delta} positions — re-scored as a closer match than cosine suggested`;
+  if (delta === 1) return "Minor lift — slight re-ordering on re-score";
+  if (delta === 0)
+    return newRank === 1
+      ? "Held the top spot — both methods agree this is the best match"
+      : "Rank held steady — both methods agree";
+  const n = Math.abs(delta);
+  return `Demoted ${n} position${n !== 1 ? "s" : ""} — cross-encoder lowered confidence, but kept in final top-K`;
+}
+
+const deltaToneStyles: Record<DeltaTone, string> = {
+  "boost-strong": "bg-emerald-500/15 border-emerald-500/40 text-emerald-300",
+  "boost":        "bg-emerald-500/10 border-emerald-500/25 text-emerald-300",
+  "same":         "bg-gray-500/10  border-gray-500/25  text-gray-300",
+  "demoted":      "bg-amber-500/10 border-amber-500/30 text-amber-300",
+};
 
 // Accent color per step type — bg for the chip, text for the SVG stroke
 const stepColors: Record<string, { bg: string; text: string }> = {
@@ -269,8 +322,42 @@ export default function StepCard({ step, label, index, style }: Props) {
           })()}
           <span className="text-sm font-medium truncate">{label}</span>
           {summary && (
-            <span className="text-xs text-gray-500 truncate max-w-[260px] shrink-0">· {summary}</span>
+            <span className="text-xs text-gray-500 truncate max-w-[260px] shrink-0">· {summary} </span>
           )}
+
+          {/* Inline rerank impact chips — headline the movement right next
+              to the step name so it's visible before expanding. Hidden once
+              expanded since the detail view has its own Impact overview. */}
+          {!expanded && step.step === "rerank" && step.status === "complete" && (() => {
+            const impact = getRerankImpact(step);
+            if (!impact) return null;
+            const chip = "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium flex-shrink-0";
+            return (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {impact.boosted > 0 && (
+                  <span className={`${chip} bg-emerald-500/10 border-emerald-500/25 text-emerald-300`}>
+                    ↑ {impact.boosted} boosted
+                  </span>
+                )}
+                {impact.held > 0 && (
+                  <span className={`${chip} bg-gray-500/10 border-gray-500/25 text-gray-300`}>
+                    ≈{impact.held} held
+                  </span>
+                )}
+                {impact.demoted > 0 && (
+                  <span className={`${chip} bg-amber-500/10 border-amber-500/30 text-amber-300`}>
+                    ↓ {impact.demoted} demoted
+                  </span>
+                )}
+                {impact.dropped > 0 && (
+                  <span className={`${chip} bg-gray-700/30 border-gray-600/30 text-gray-400`}>
+                    — {impact.dropped} dropped
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
           <span className={`text-xs ${styles.badge}`}>{statusLabel}</span>
         </div>
 
@@ -288,6 +375,202 @@ export default function StepCard({ step, label, index, style }: Props) {
           <StepDetail step={step} expandedQueries={expandedQueries} setExpandedQueries={setExpandedQueries} />
         </div>
       )}
+    </div>
+  );
+}
+
+function ContextStepDetail({ step }: { step: PipelineStep }) {
+  const [promptOpen, setPromptOpen] = useState(false);
+  const data = step.data as {
+    chunk_count?: number;
+    token_count?: number;
+    token_limit?: number;
+    chunks?: ContextChunk[];
+    prompt?: string;
+  };
+  const chunks = data.chunks ?? [];
+  const tokenLimit = data.token_limit ?? 2000;
+  const tokenUsed = data.token_count ?? 0;
+  const usedPct = Math.min(100, Math.round((tokenUsed / tokenLimit) * 100));
+  const overhead = tokenUsed - chunks.filter(c => c.status !== "removed").reduce((s, c) => s + c.tokens, 0);
+
+  const fullCount = chunks.filter(c => c.status === "full").length;
+  const truncatedCount = chunks.filter(c => c.status === "truncated").length;
+  const removedCount = chunks.filter(c => c.status === "removed").length;
+
+  const budgetColor =
+    usedPct > 90 ? "bg-red-500" :
+    usedPct > 70 ? "bg-amber-500" :
+    "bg-teal-500";
+
+  const statusBadge = (status: ContextChunk["status"], pct: number) => {
+    if (status === "full")
+      return <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border bg-teal-500/15 border-teal-500/30 text-teal-300 flex-shrink-0">full</span>;
+    if (status === "truncated")
+      return <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border bg-amber-500/15 border-amber-500/30 text-amber-300 flex-shrink-0">−{pct}% truncated</span>;
+    return <span className="text-[9px] font-medium px-1.5 py-0.5 rounded border bg-red-500/15 border-red-500/30 text-red-300 flex-shrink-0">removed</span>;
+  };
+
+  return (
+    <div className="space-y-3 mt-1">
+
+      {/* ── Token Budget Overview ─────────────────────────── */}
+      <div className="rounded-lg border border-teal-500/20 bg-teal-950/20 p-3 space-y-2.5">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-teal-400/70">
+          Token Budget
+        </span>
+
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Used", value: tokenUsed, highlight: true },
+            { label: "Limit", value: tokenLimit, highlight: false },
+            { label: "Free", value: Math.max(0, tokenLimit - tokenUsed), highlight: false },
+          ].map(({ label, value, highlight }) => (
+            <div
+              key={label}
+              className={`rounded-md px-2 py-2 text-center ${
+                highlight
+                  ? "bg-teal-500/15 border border-teal-500/30"
+                  : "bg-gray-800/60 border border-gray-700/40"
+              }`}
+            >
+              <div className={`text-base font-bold leading-none font-mono ${highlight ? "text-teal-300" : "text-gray-200"}`}>
+                {value}
+              </div>
+              <div className="text-[10px] text-gray-500 mt-1 leading-none">{label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex justify-between text-[10px] text-gray-500">
+            <span>Context fill</span>
+            <span className={usedPct > 90 ? "text-red-400" : usedPct > 70 ? "text-amber-400" : "text-teal-400"}>
+              {usedPct}%
+            </span>
+          </div>
+          <div className="h-2 bg-gray-700/60 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${budgetColor}`}
+              style={{ width: `${usedPct}%` }}
+            />
+          </div>
+          {overhead > 0 && (
+            <p className="text-[10px] text-gray-600">
+              ~{overhead} tokens reserved for prompt template + question
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {fullCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-500/10 border border-teal-500/25 text-[10px] font-medium text-teal-300">
+              ✓ {fullCount} full
+            </span>
+          )}
+          {truncatedCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] font-medium text-amber-300">
+              ⊘ {truncatedCount} truncated
+            </span>
+          )}
+          {removedCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 border border-red-500/30 text-[10px] font-medium text-red-300">
+              ✕ {removedCount} removed
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Context Order ─────────────────────────────────── */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+            Context Order Sent to LLM
+          </span>
+          <span className="text-[10px] text-gray-600">
+            {chunks.length} chunk{chunks.length !== 1 ? "s" : ""} · top → bottom
+          </span>
+        </div>
+
+        {chunks.map((chunk, i) => {
+          const isRemoved = chunk.status === "removed";
+          const fillWidth = chunk.status === "full"
+            ? 100
+            : chunk.status === "truncated"
+            ? 100 - chunk.truncated_pct
+            : 0;
+
+          return (
+            <div
+              key={i}
+              className={`rounded-lg border p-2.5 space-y-2 ${
+                isRemoved
+                  ? "border-red-500/20 bg-red-950/10 opacity-60"
+                  : chunk.status === "truncated"
+                  ? "border-amber-500/20 bg-amber-950/10"
+                  : "border-teal-500/20 bg-teal-950/10"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-gray-600 flex-shrink-0 w-4">
+                  {isRemoved ? "—" : `#${chunks.slice(0, i + 1).filter(c => c.status !== "removed").length}`}
+                </span>
+                <span className="text-[11px] text-gray-400 truncate flex-1 min-w-0">{chunk.source}</span>
+                <span className="text-[10px] font-mono text-gray-600 flex-shrink-0">{chunk.tokens} tok</span>
+                {statusBadge(chunk.status, chunk.truncated_pct)}
+              </div>
+
+              {!isRemoved && (
+                <div className="space-y-0.5">
+                  <div className="h-1 bg-gray-700/50 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${chunk.status === "truncated" ? "bg-amber-500/70" : "bg-teal-500/70"}`}
+                      style={{ width: `${fillWidth}%` }}
+                    />
+                  </div>
+                  {chunk.status === "truncated" && (
+                    <p className="text-[9px] text-amber-400/70">
+                      First {100 - chunk.truncated_pct}% included · last {chunk.truncated_pct}% cut to fit token limit
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p className={`text-[11px] leading-relaxed line-clamp-2 ${isRemoved ? "text-gray-600 line-through" : "text-gray-400"}`}>
+                {chunk.text_preview}
+                {chunk.status === "truncated" && <span className="text-amber-500/60 not-italic"> …[truncated]</span>}
+              </p>
+
+              {isRemoved && (
+                <p className="text-[10px] text-red-400/70 italic">
+                  Not sent to LLM — token budget exhausted before this chunk
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Full Prompt Preview ───────────────────────────── */}
+      {data.prompt && (
+        <div className="rounded-lg border border-gray-700/40 overflow-hidden">
+          <button
+            onClick={() => setPromptOpen(o => !o)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-gray-800/50 hover:bg-gray-800/70 transition-colors text-left"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+              Full Prompt Sent to Model
+            </span>
+            <span className="text-[10px] text-gray-600">{promptOpen ? "▲ hide" : "▼ show"}</span>
+          </button>
+          {promptOpen && (
+            <pre className="px-3 py-2.5 text-[11px] text-gray-300 font-mono whitespace-pre-wrap break-words leading-relaxed bg-gray-900/60 max-h-96 overflow-y-auto">
+              {data.prompt}
+            </pre>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -611,45 +894,149 @@ function StepDetail({ step, expandedQueries, setExpandedQueries }: { step: Pipel
     );
   }
 
-  // --- Rerank step: show re-scored chunks with before/after scores ---
+  // --- Rerank step: impact overview + per-chunk rank change, score arrow,
+  //     delta badge, and a heuristic reason. ---
   if (step.step === "rerank" && "results" in step.data) {
-    const data = step.data as { before_rerank?: number; after_rerank?: number; results?: RerankChunk[] };
+    const data = step.data as {
+      before_rerank?: number; after_rerank?: number;
+      dropped_count?: number; results?: RerankChunk[];
+    };
     const results = data.results ?? [];
+    const impact = getRerankImpact(step);
+
+    // Pill style for the "new_rank ← original_rank" indicator. The current
+    // rank pill takes the delta tone so the movement direction is obvious
+    // at a glance; the original-rank pill stays muted for contrast.
+    const rankPillTone: Record<DeltaTone, string> = {
+      "boost-strong": "bg-emerald-500/20 text-emerald-200 border-emerald-500/40",
+      "boost":        "bg-emerald-500/15 text-emerald-200 border-emerald-500/30",
+      "same":         "bg-gray-700/50    text-gray-200    border-gray-600/40",
+      "demoted":      "bg-amber-500/15   text-amber-200   border-amber-500/30",
+    };
+
     return (
-      <div className="space-y-2 mt-1">
-        <div className="flex gap-3 text-xs text-gray-500">
-          {data.before_rerank !== undefined && (
-            <span>Input: {data.before_rerank} chunks</span>
-          )}
-          {data.after_rerank !== undefined && (
-            <span>Kept top: {data.after_rerank}</span>
+      <div className="space-y-3 mt-1">
+
+        {/* ── Re-rank Impact Overview ─────────────────────── */}
+        <div className="rounded-lg border border-indigo-500/20 bg-indigo-950/20 p-3 space-y-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400/70">
+            Re-rank Impact
+          </span>
+
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Input",   value: data.before_rerank ?? 0, highlight: false },
+              { label: "Kept",    value: data.after_rerank ?? results.length, highlight: true },
+              { label: "Dropped", value: data.dropped_count ?? 0, highlight: false },
+            ].map(({ label, value, highlight }) => (
+              <div
+                key={label}
+                className={`rounded-md px-2 py-2 text-center ${
+                  highlight
+                    ? "bg-indigo-500/15 border border-indigo-500/30"
+                    : "bg-gray-800/60 border border-gray-700/40"
+                }`}
+              >
+                <div className={`text-base font-bold leading-none ${highlight ? "text-indigo-300" : "text-gray-200"}`}>
+                  {value}
+                </div>
+                <div className="text-[10px] text-gray-500 mt-1 leading-none">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Movement chip row */}
+          {impact && (
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-medium text-emerald-300">
+                <span className="text-emerald-400">↑</span>
+                {impact.boosted} boosted
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-500/10 border border-gray-500/25 text-[10px] font-medium text-gray-300">
+                <span className="text-gray-400">≈</span>
+                {impact.held} held
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] font-medium text-amber-300">
+                <span className="text-amber-400">↓</span>
+                {impact.demoted} demoted
+              </span>
+            </div>
           )}
         </div>
-        {results.map((chunk, i) => (
-          <div key={i} className="rounded bg-gray-900/60 p-2.5 text-xs space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 truncate max-w-[50%]">{chunk.source}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-600 font-mono">
-                  cos: {chunk.original_score?.toFixed(3)}
-                </span>
-                <span className="text-gray-600">→</span>
-                <span
-                  className={`font-mono font-medium ${
-                    chunk.rerank_score > 2
-                      ? "text-green-400"
-                      : chunk.rerank_score > 0
-                      ? "text-yellow-400"
-                      : "text-gray-500"
-                  }`}
-                >
-                  rank: {chunk.rerank_score?.toFixed(3)}
-                </span>
-              </div>
-            </div>
-            <p className="text-gray-300 line-clamp-3 leading-relaxed">{chunk.text}</p>
+
+        {/* ── Per-Chunk Breakdown ──────────────────────────── */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+              Per-Chunk Breakdown
+            </span>
+            <span className="text-[10px] text-gray-600">
+              sorted by rerank score
+            </span>
           </div>
-        ))}
+
+          {results.map((chunk, i) => {
+            const delta = (chunk.original_rank ?? 0) - (chunk.new_rank ?? 0);
+            const badge = getDeltaBadge(delta);
+            const reason = getDeltaReason(delta, chunk.new_rank ?? i + 1);
+
+            return (
+              <div
+                key={i}
+                className="rounded-lg border border-gray-700/40 bg-gray-900/60 p-2.5 space-y-2"
+              >
+                {/* Row 1: rank change + source + delta badge */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-1 flex-shrink-0 font-mono text-[10px]">
+                      <span className={`px-1.5 py-0.5 rounded border ${rankPillTone[badge.tone]}`}>
+                        #{chunk.new_rank ?? i + 1}
+                      </span>
+                      <span className="text-gray-600">←</span>
+                      <span className="px-1.5 py-0.5 rounded border bg-gray-800/60 border-gray-700/40 text-gray-400">
+                        #{chunk.original_rank ?? "?"}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-gray-500 truncate">{chunk.source}</span>
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-medium flex-shrink-0 ${deltaToneStyles[badge.tone]}`}
+                  >
+                    <span>{badge.arrow}</span>
+                    {badge.label}
+                  </span>
+                </div>
+
+                {/* Row 2: score progression */}
+                <div className="flex items-center gap-2 text-[10px] font-mono">
+                  <span className="text-gray-500">vector</span>
+                  <span className="text-gray-300">{chunk.original_score?.toFixed(3)}</span>
+                  <span className="text-gray-600">→</span>
+                  <span className="text-gray-500">rerank</span>
+                  <span
+                    className={`font-medium ${
+                      chunk.rerank_score > 2
+                        ? "text-green-400"
+                        : chunk.rerank_score > 0
+                        ? "text-yellow-400"
+                        : "text-gray-500"
+                    }`}
+                  >
+                    {chunk.rerank_score?.toFixed(3)}
+                  </span>
+                </div>
+
+                {/* Row 3: heuristic reason */}
+                <p className="text-[11px] text-gray-400 italic leading-snug">{reason}</p>
+
+                {/* Row 4: chunk text preview */}
+                <p className="text-xs text-gray-300 line-clamp-3 leading-relaxed pt-1.5 border-t border-gray-800/70">
+                  {chunk.text}
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -814,6 +1201,11 @@ function StepDetail({ step, expandedQueries, setExpandedQueries }: { step: Pipel
         )}
       </div>
     );
+  }
+
+  // --- Context step: delegated to its own component so it can use useState ---
+  if (step.step === "context" && "chunks" in step.data) {
+    return <ContextStepDetail step={step} />;
   }
 
   // --- Default: render all data fields as key-value pairs ---

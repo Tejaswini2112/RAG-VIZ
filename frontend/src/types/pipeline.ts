@@ -34,12 +34,25 @@ export interface RetrievedChunk {
 export interface RerankChunk extends RetrievedChunk {
   original_score: number;
   rerank_score: number;
+  original_rank: number;
+  new_rank: number;
 }
 
 export interface ChunkVerdict {
   index: number;
   relevance: "relevant" | "partially_relevant" | "irrelevant";
   reason: string;
+}
+
+export interface ContextChunk {
+  index: number;
+  source: string;
+  tokens: number;
+  token_start: number;
+  token_end: number;
+  status: "full" | "truncated" | "removed";
+  truncated_pct: number;
+  text_preview: string;
 }
 
 export interface WebSearchResult {
@@ -58,10 +71,16 @@ export interface StepDataMap {
   route:     { query?: string; strategy?: string; reason?: string };
   transform: { method?: string; original?: string; queries?: string[]; note?: string; hypothesis?: string; broad_query?: string };
   retrieve:  { query?: string; query_count?: number; per_query?: { query: string; results: RetrievedChunk[] }[]; results?: RetrievedChunk[]; total_retrieved?: number; after_dedup?: number };
-  rerank:    { before_rerank?: number; after_rerank?: number; results?: RerankChunk[] };
+  rerank:    { before_rerank?: number; after_rerank?: number; dropped_count?: number; results?: RerankChunk[] };
   evaluate:  { verdicts?: ChunkVerdict[]; decision?: string; kept_count?: number; filtered_count?: number };
   web_search: { query?: string; result_count?: number; results?: WebSearchResult[]; note?: string; reason?: string };
-  context:   { chunk_count?: number; token_count?: number; prompt?: string };
+  context:   {
+    chunk_count?: number;
+    token_count?: number;
+    token_limit?: number;
+    chunks?: ContextChunk[];
+    prompt?: string;
+  };
   generate:  { model: string; attempt?: number };
   verify:    { attempt?: number; faithfulness?: string; faithfulness_reason?: string; relevance?: string; relevance_reason?: string; issues?: string[]; accepted?: boolean; retried?: boolean };
   done:      { answer?: string; chunk_count?: number };

@@ -14,9 +14,15 @@ interface Props {
   onTerminateSteps: () => void;
 }
 
+function estimateTokens(text: string): number {
+  // ~4 chars per token is a standard approximation for English text
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
 export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps, onTerminateSteps }: Props) {
   const [input, setInput] = useState("");
   const [docReady, setDocReady] = useState(false);
+  const [lastTokenCount, setLastTokenCount] = useState<number | null>(null);
 
   const { uploadFile, isUploading, error: uploadError } = useUpload((step) => {
     onStep(step);
@@ -47,6 +53,7 @@ export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps
     const question = input.trim();
     if (!question || isQuerying) return;
 
+    setLastTokenCount(estimateTokens(question));
     setInput("");
     onClearSteps(); // clear pipeline panel before showing query steps
 
@@ -107,7 +114,7 @@ export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="flex-none p-4 border-t border-gray-800">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -139,6 +146,17 @@ export default function ChatPanel({ messages, onAddMessage, onStep, onClearSteps
             </button>
           )}
         </div>
+        {lastTokenCount !== null && (
+          <div className="mt-2 flex items-center gap-1.5 animate-fade-in">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-50">
+              <rect x="1" y="3" width="10" height="2" rx="1" fill="#6b7280"/>
+              <rect x="1" y="7" width="7"  height="2" rx="1" fill="#6b7280"/>
+            </svg>
+            <span className="text-xs text-gray-500">
+              Last query: <span className="text-gray-400 font-medium">~{lastTokenCount} token{lastTokenCount !== 1 ? "s" : ""}</span>
+            </span>
+          </div>
+        )}
       </form>
     </div>
   );
