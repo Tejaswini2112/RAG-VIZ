@@ -76,6 +76,62 @@ RAG_VIZ/
 
 ---
 
+## System Architecture
+
+```mermaid
+graph TB
+
+  subgraph BROWSER["  Browser  "]
+    direction TB
+    UP["📄 FileUpload\nDrag-drop PDF · DOCX · TXT"]
+    CHAT["💬 ChatPanel\nQuery input · message history"]
+    PIPE["📊 PipelinePanel\nStep cards · real-time updates"]
+    HOOKS["🔗 Hooks\nuseSSEStream · useQuery · useUpload"]
+    UP --- HOOKS
+    CHAT --- HOOKS
+    HOOKS --- PIPE
+  end
+
+  subgraph BACKEND["  FastAPI Backend — port 8000  "]
+    direction TB
+    ING["POST /upload\nIngest Pipeline"]
+    QRY["POST /query\nQuery Pipeline"]
+    TR["⚡ PipelineTracer\nasyncio.Queue → SSE"]
+    ING --> TR
+    QRY --> TR
+  end
+
+  subgraph LOCAL["  Local ML Models (no API cost)  "]
+    EMB["🧠 Sentence Transformer\nall-MiniLM-L6-v2 · 384-dim"]
+    CE["🎯 Cross-Encoder\nms-marco-MiniLM-L-6-v2"]
+  end
+
+  subgraph STORAGE["  Local Storage  "]
+    CHROMA["🗄️ ChromaDB\nCosine similarity · persisted"]
+    FILES["📁 ./uploads/"]
+  end
+
+  subgraph EXTERNAL["  External APIs  "]
+    CLAUDE["✨ Anthropic Claude Sonnet 4.6\nroute · transform · eval · generate · verify"]
+    TAV["🌐 Tavily Search\nCRAG web fallback (optional)"]
+  end
+
+  UP -- "FormData" --> ING
+  CHAT -- "POST JSON" --> QRY
+  TR -- "SSE  data:{step,status,data}" --> HOOKS
+
+  ING -- "embed chunks" --> EMB
+  QRY -- "embed query" --> EMB
+  QRY -- "score pairs" --> CE
+
+  EMB -- "store 384-dim vectors" --> CHROMA
+  CHROMA -- "top-K retrieval" --> QRY
+  ING --> FILES
+
+  QRY -- "5 LLM calls across pipeline" --> CLAUDE
+  QRY -- "relevance=0 fallback" --> TAV
+```
+
 ## Getting Started
 
 ### Prerequisites
@@ -172,59 +228,3 @@ The backend uses **Server-Sent Events (SSE)** to push pipeline progress to the b
 
 ---
 
-## License
-
-MIT
-```mermaid
-graph TB
-
-  subgraph BROWSER["  Browser  "]
-    direction TB
-    UP["📄 FileUpload\nDrag-drop PDF · DOCX · TXT"]
-    CHAT["💬 ChatPanel\nQuery input · message history"]
-    PIPE["📊 PipelinePanel\nStep cards · real-time updates"]
-    HOOKS["🔗 Hooks\nuseSSEStream · useQuery · useUpload"]
-    UP --- HOOKS
-    CHAT --- HOOKS
-    HOOKS --- PIPE
-  end
-
-  subgraph BACKEND["  FastAPI Backend — port 8000  "]
-    direction TB
-    ING["POST /upload\nIngest Pipeline"]
-    QRY["POST /query\nQuery Pipeline"]
-    TR["⚡ PipelineTracer\nasyncio.Queue → SSE"]
-    ING --> TR
-    QRY --> TR
-  end
-
-  subgraph LOCAL["  Local ML Models (no API cost)  "]
-    EMB["🧠 Sentence Transformer\nall-MiniLM-L6-v2 · 384-dim"]
-    CE["🎯 Cross-Encoder\nms-marco-MiniLM-L-6-v2"]
-  end
-
-  subgraph STORAGE["  Local Storage  "]
-    CHROMA["🗄️ ChromaDB\nCosine similarity · persisted"]
-    FILES["📁 ./uploads/"]
-  end
-
-  subgraph EXTERNAL["  External APIs  "]
-    CLAUDE["✨ Anthropic Claude Sonnet 4.6\nroute · transform · eval · generate · verify"]
-    TAV["🌐 Tavily Search\nCRAG web fallback (optional)"]
-  end
-
-  UP -- "FormData" --> ING
-  CHAT -- "POST JSON" --> QRY
-  TR -- "SSE  data:{step,status,data}" --> HOOKS
-
-  ING -- "embed chunks" --> EMB
-  QRY -- "embed query" --> EMB
-  QRY -- "score pairs" --> CE
-
-  EMB -- "store 384-dim vectors" --> CHROMA
-  CHROMA -- "top-K retrieval" --> QRY
-  ING --> FILES
-
-  QRY -- "5 LLM calls across pipeline" --> CLAUDE
-  QRY -- "relevance=0 fallback" --> TAV
-```
