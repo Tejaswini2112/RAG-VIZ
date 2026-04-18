@@ -1,0 +1,118 @@
+Retrieval-Augmented Generation: A Comprehensive Guide
+
+WHAT IS RAG?
+
+Retrieval-Augmented Generation (RAG) is an AI architecture that combines two powerful capabilities: the retrieval of relevant information from a knowledge base and the generation of natural language responses using a large language model (LLM). The core idea is simple but transformative — instead of relying solely on what a language model learned during training, RAG allows the model to look up fresh, specific, or proprietary information at query time.
+
+Traditional language models are trained on large corpora of text, giving them broad world knowledge. However, they have significant limitations: their knowledge is frozen at the training cutoff date, they cannot access private or domain-specific documents, and they sometimes "hallucinate" facts that were not in their training data. RAG addresses all three of these problems directly.
+
+When a user asks a question in a RAG system, the process works in two stages. First, the retrieval stage searches a document store to find the most relevant passages or chunks of text. Second, the generation stage feeds those retrieved passages into the LLM as context, allowing the model to craft an accurate, grounded answer based on real source material.
+
+
+CORE COMPONENTS OF A RAG SYSTEM
+
+A production RAG system consists of several interconnected components, each serving a distinct role.
+
+1. Document Ingestion Pipeline
+
+Before any question can be answered, documents must be processed and stored. The ingestion pipeline involves:
+
+Loading: Documents in various formats (PDF, TXT, DOCX, HTML) are read and converted to plain text. This step handles format-specific parsing — for example, extracting text from PDF pages or stripping HTML tags from web content.
+
+Chunking: Long documents are split into smaller, overlapping segments called chunks. This is necessary because LLMs have limited context windows and because embedding models work better on shorter, focused pieces of text. A typical chunk might be 256 to 512 tokens, with a 10–20% overlap between adjacent chunks to preserve context across boundaries.
+
+Embedding: Each chunk is converted into a dense numerical vector using an embedding model. Embeddings capture the semantic meaning of text — chunks about similar topics will have vectors that are close together in the embedding space. Popular embedding models include OpenAI's text-embedding-3-small, Cohere's embed-english, and open-source models like sentence-transformers.
+
+Storing: The chunk text and its embedding vector are stored together in a vector database (also called a vector store). Examples include Chroma, Pinecone, Weaviate, FAISS, and pgvector. The vector database is optimized for fast approximate nearest-neighbor search, enabling millisecond-level retrieval across millions of vectors.
+
+2. Query Processing Pipeline
+
+When a user submits a question, the query pipeline runs:
+
+Query Routing: The system decides whether to answer from the local document store, run a web search, or refuse to answer. This can involve a classifier or an LLM call to analyze the query intent and determine the best source.
+
+Query Transformation: The raw user question is often rewritten or expanded to improve retrieval quality. Techniques include HyDE (Hypothetical Document Embeddings), multi-query expansion, and step-back prompting. These transformations help bridge the vocabulary gap between the query and the documents.
+
+Retrieval: The user's query is embedded using the same model used during ingestion. The vector database then performs a similarity search to find the top-k most relevant chunks. Similarity is typically measured using cosine similarity or dot product between the query vector and stored chunk vectors.
+
+Reranking: The initial retrieval is often imprecise. A reranker model (typically a cross-encoder) takes the query and each retrieved chunk and scores their relevance more accurately than embedding similarity alone. The top-n chunks after reranking are kept for context assembly.
+
+Context Assembly: Retrieved chunks are assembled into a structured prompt context. Token budget management is critical here — the total length of chunks plus the system prompt plus the query must fit within the LLM's context window. Chunks may be truncated or dropped to stay within limits.
+
+Verification: Before generating a response, some systems check whether retrieved context is relevant enough to support an answer. If the context quality is too low, the system may retry with different retrieval parameters or fall back to a web search.
+
+Generation: The LLM receives the assembled context and produces a final answer. It is instructed to ground its response in the provided documents and avoid making up information not present in the context.
+
+
+WHY EMBEDDINGS MATTER
+
+Embeddings are at the heart of how RAG retrieves relevant information. An embedding is a vector of floating-point numbers — typically 384 to 3072 dimensions — that encodes the semantic content of a piece of text. Two sentences that mean the same thing in different words will have embeddings that are close in the vector space; two sentences about completely different topics will be far apart.
+
+This semantic search capability is what distinguishes RAG from simple keyword search. A keyword search for "cardiac arrest" would not match a document that only uses the phrase "heart attack." An embedding-based search would, because the embeddings for these phrases are semantically similar.
+
+The quality of the embedding model has a direct impact on retrieval quality. Models fine-tuned on domain-specific data (medical, legal, scientific) often outperform general-purpose models for queries in that domain. Larger embedding dimensions generally capture more nuance but require more storage and computation.
+
+Bi-encoders (like sentence-transformers) encode the query and document independently and compare with dot product — fast but less precise. Cross-encoders take the query and document together and are more accurate but too slow to run on every document in the corpus, which is why they are used for reranking a small candidate set rather than full retrieval.
+
+
+CHUNKING STRATEGIES
+
+How you split documents into chunks significantly affects retrieval quality. The goal is to create chunks that are self-contained, appropriately sized, and overlapping enough to preserve context at boundaries.
+
+Fixed-size chunking splits every N characters or tokens, with a configurable overlap. It is simple and predictable but can split sentences mid-thought, creating incoherent chunks.
+
+Sentence-based chunking splits on sentence boundaries to preserve complete thoughts. The resulting chunks vary in length, which can complicate batching for embedding.
+
+Semantic chunking uses embedding similarity to detect topic shifts. When consecutive sentences have low similarity, a chunk boundary is placed there. This produces more coherent chunks but is slower to compute.
+
+Recursive character splitting tries multiple separators (paragraphs, sentences, words) in order of preference, falling back to the next separator when chunks would be too large. This is the most popular general-purpose strategy and is the default in LangChain.
+
+Chunk size and overlap are hyperparameters worth tuning for each use case. A technical documentation corpus may benefit from larger chunks (512–1024 tokens) to preserve code examples, while a FAQ corpus may do better with smaller, highly targeted chunks (128–256 tokens).
+
+
+RAG VS. FINE-TUNING
+
+A common question is whether RAG or fine-tuning is the better approach for incorporating domain knowledge into an LLM. The answer depends on the use case.
+
+Fine-tuning trains the model's weights on domain-specific data. The model internalizes the knowledge and can answer questions without an external retrieval step. Fine-tuning is best when the knowledge is stable and does not change frequently, when the task requires a specific tone or reasoning style, or when low latency is critical.
+
+RAG keeps the model general and retrieves knowledge at inference time. RAG is better when the knowledge base is large, dynamic, or frequently updated; when exact sourcing and attribution are important; when the documents are proprietary and cannot be used to train external model APIs; or when you need to add new knowledge without the cost of retraining.
+
+In practice, many production systems combine both approaches: a fine-tuned model for task-specific reasoning and style, with RAG for up-to-date factual grounding. The fine-tuned model learns how to use retrieved context effectively, while RAG provides the current knowledge.
+
+
+LIMITATIONS OF RAG
+
+RAG is powerful, but not a silver bullet. Understanding its limitations is important for building reliable systems.
+
+Retrieval failures: If the relevant information is not retrieved, the LLM cannot answer correctly. This can happen because the query and document use different vocabulary, the chunk boundaries cut through important context, or the top-k setting is too small to capture all relevant passages.
+
+Context length constraints: Even with retrieval, there is a limit to how much context can fit in the LLM's window. Very long documents or queries requiring information spread across many chunks are challenging. Long-context models (128k+ tokens) mitigate but do not eliminate this.
+
+Hallucination is not eliminated: While grounding in retrieved context reduces hallucination, LLMs can still generate incorrect information, especially when the retrieved context is ambiguous, contradictory, or only partially relevant to the query.
+
+Latency: RAG adds multiple steps (embedding, search, reranking) compared to a direct LLM call, increasing response latency. Production systems often optimize this with caching, async processing, and batching.
+
+Stale embeddings: If the source documents change, the stored embeddings become stale. Continuous or incremental re-ingestion pipelines are needed to keep the vector store synchronized with the source documents.
+
+Multi-hop reasoning: Questions that require connecting information from multiple documents — for example, "Who founded the company that acquired X?" — require multiple retrieval rounds or graph-based approaches. Standard single-pass RAG handles these queries poorly.
+
+Chunk boundary artifacts: Information that spans two adjacent chunks may be partially retrieved in one chunk but not fully captured. Overlap helps, but cannot fully solve this problem for long continuous passages.
+
+
+EVALUATING RAG QUALITY
+
+Measuring RAG performance requires evaluating multiple dimensions independently.
+
+Retrieval metrics focus on whether the relevant information was found: Recall@k (did the relevant document appear in the top k results?), Mean Reciprocal Rank (MRR), and Normalized Discounted Cumulative Gain (NDCG).
+
+Generation metrics focus on the quality of the final answer: Faithfulness (does the answer accurately reflect the retrieved context without adding unsupported claims?), Relevance (does the answer address the user's question?), and Answer Correctness (is the answer factually correct against ground truth?).
+
+End-to-end evaluation can use frameworks like RAGAS, which provides automated pipelines using LLM-as-judge approaches to score faithfulness and relevance without needing labeled data for every query. Human evaluation remains important for high-stakes applications.
+
+
+CONCLUSION
+
+RAG represents a pragmatic and powerful approach to building LLM applications that need access to specific, current, or proprietary knowledge. By separating the retrieval and generation stages, RAG systems can be continuously updated, cited for accuracy, and debugged at each individual step. Understanding each component — from chunking strategy to embedding quality to reranking to context assembly — is key to building a RAG system that performs reliably in production.
+
+This document was designed as a sample for RAG VIZ, an interactive tool for exploring and visualizing RAG pipeline behavior. Try asking questions about any of the concepts described above to see the full retrieval and generation pipeline in action.

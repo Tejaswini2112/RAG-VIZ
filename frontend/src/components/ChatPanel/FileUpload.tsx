@@ -4,9 +4,11 @@ interface Props {
   onUpload: (file: File) => void;
   isUploading: boolean;
   docReady: boolean;
+  uploadedFileName?: string | null;
+  uploadedFileUrl?: string | null;
 }
 
-export default function FileUpload({ onUpload, isUploading, docReady }: Props) {
+export default function FileUpload({ onUpload, isUploading, docReady, uploadedFileName, uploadedFileUrl }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -48,29 +50,49 @@ export default function FileUpload({ onUpload, isUploading, docReady }: Props) {
   // ── Ready ────────────────────────────────────────────────────────────────
   if (docReady) {
     return (
-      <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-green-500/30 bg-green-500/5">
-        <div className="flex items-center gap-2.5">
-          <span className="w-6 h-6 rounded-md bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3,9 6,12 13,4" />
-            </svg>
-          </span>
-          <p className="text-sm font-medium text-green-400">Document ready</p>
+      <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-green-500/30 bg-green-500/5">
+        {/* Check icon */}
+        <span className="w-6 h-6 rounded-md bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0">
+          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="3,9 6,12 13,4" />
+          </svg>
+        </span>
+
+        {/* Filename + status */}
+        <div className="flex-1 min-w-0">
+          {uploadedFileName && (
+            <p className="text-xs text-gray-300 font-mono truncate leading-tight">{uploadedFileName}</p>
+          )}
+          <p className="text-xs font-medium text-green-400 leading-tight mt-0.5">Document ready</p>
         </div>
-        <label
-          htmlFor="file-upload-ready"
-          className="text-xs text-gray-500 hover:text-gray-300 cursor-pointer transition-colors underline underline-offset-2"
-        >
-          Change file
-        </label>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,.txt,.docx"
-          onChange={handleChange}
-          className="hidden"
-          id="file-upload-ready"
-        />
+
+        {/* Actions */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {uploadedFileUrl && (
+            <a
+              href={uploadedFileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              View
+            </a>
+          )}
+          <label
+            htmlFor="file-upload-ready"
+            className="text-xs text-gray-500 hover:text-gray-300 cursor-pointer transition-colors underline underline-offset-2"
+          >
+            Change
+          </label>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,.txt,.docx"
+            onChange={handleChange}
+            className="hidden"
+            id="file-upload-ready"
+          />
+        </div>
       </div>
     );
   }
@@ -97,7 +119,6 @@ export default function FileUpload({ onUpload, isUploading, docReady }: Props) {
             : "border-gray-700 hover:border-gray-500 hover:bg-gray-800/40"
           }`}
       >
-        {/* Upload cloud icon */}
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all
           ${isDragging ? "bg-blue-500/20 text-blue-400 scale-110" : "bg-gray-800 text-gray-500"}`}
         >
