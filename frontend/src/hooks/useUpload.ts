@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PipelineStep } from "../types/pipeline";
 import { useSSEStream } from "./useSSEStream";
+import { API_BASE } from "../config";
 
 export function useUpload(onStep: (step: PipelineStep) => void) {
   const [isUploading, setIsUploading] = useState(false);
@@ -16,7 +17,7 @@ export function useUpload(onStep: (step: PipelineStep) => void) {
 
     try {
       await startStream(
-        "/upload",
+        `${API_BASE}/upload`,
         { method: "POST", body: formData },
         onStep
       );

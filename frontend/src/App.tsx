@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import ChatPanel from "./components/ChatPanel/ChatPanel";
 import PipelinePanel from "./components/PipelinePanel/PipelinePanel";
 import { PipelineStep } from "./types/pipeline";
@@ -12,6 +12,7 @@ export interface Message {
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [steps, setSteps] = useState<PipelineStep[]>([]);
+  const [activeTab, setActiveTab] = useState<"chat" | "pipeline">("chat");
 
   /**
    * Called by the pipeline hooks whenever a new event arrives from the backend.
@@ -58,22 +59,57 @@ export default function App() {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
+  // On mobile: auto-switch to pipeline tab when steps start streaming
+  useEffect(() => {
+    if (steps.length === 1) setActiveTab("pipeline");
+  }, [steps.length]);
+
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100 overflow-hidden">
-      {/* Left panel — chat */}
-      <div className="w-1/2 border-r border-gray-800 flex flex-col min-h-0">
-        <ChatPanel
-          messages={messages}
-          onAddMessage={addMessage}
-          onStep={addStep}
-          onClearSteps={clearSteps}
-          onTerminateSteps={terminateRunningSteps}
-        />
+    <div className="flex flex-col h-screen bg-gray-950 text-gray-100 overflow-hidden">
+      {/* Mobile tab bar — hidden on lg+ */}
+      <div className="lg:hidden flex-none border-b border-gray-800 flex">
+        <button
+          onClick={() => setActiveTab("chat")}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            activeTab === "chat"
+              ? "text-blue-400 border-b-2 border-blue-500"
+              : "text-gray-500 hover:text-gray-400"
+          }`}
+        >
+          Chat
+        </button>
+        <button
+          onClick={() => setActiveTab("pipeline")}
+          className={`flex-1 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === "pipeline"
+              ? "text-indigo-400 border-b-2 border-indigo-500"
+              : "text-gray-500 hover:text-gray-400"
+          }`}
+        >
+          Pipeline
+          {steps.filter((s) => s.step !== "done").length > 0 && activeTab !== "pipeline" && (
+            <span className="absolute top-2 right-[calc(50%-20px)] w-1.5 h-1.5 rounded-full bg-indigo-400" />
+          )}
+        </button>
       </div>
 
-      {/* Right panel — pipeline trace */}
-      <div className="w-1/2 flex flex-col min-h-0">
-        <PipelinePanel steps={steps} />
+      {/* Panels */}
+      <div className="flex flex-1 overflow-hidden lg:flex-row">
+        {/* Left panel — chat */}
+        <div className={`${activeTab === "chat" ? "flex" : "hidden"} lg:flex w-full lg:w-1/2 border-r border-gray-800 flex-col min-h-0`}>
+          <ChatPanel
+            messages={messages}
+            onAddMessage={addMessage}
+            onStep={addStep}
+            onClearSteps={clearSteps}
+            onTerminateSteps={terminateRunningSteps}
+          />
+        </div>
+
+        {/* Right panel — pipeline trace */}
+        <div className={`${activeTab === "pipeline" ? "flex" : "hidden"} lg:flex w-full lg:w-1/2 flex-col min-h-0`}>
+          <PipelinePanel steps={steps} />
+        </div>
       </div>
     </div>
   );

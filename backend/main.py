@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,10 +7,14 @@ from api.query import router as query_router
 
 app = FastAPI(title="RAG Visualizer API")
 
-# Allow the React frontend (port 5173) to call this backend (port 8000)
+# ALLOWED_ORIGINS: comma-separated list of frontend URLs.
+# Dev default: localhost:5173. In production, set this env var to your Vercel URL.
+_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
+allowed_origins = [o.strip() for o in _raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

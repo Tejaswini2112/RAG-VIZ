@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: rag-viz-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false        # you'll paste this value in the Render dashboard
+      - key: TAVILY_API_KEY
+        sync: false        # optional — leave blank if not using CRAG
+      - key: ALLOWED_ORIGINS
+        sync: false        # paste your Vercel URL here after frontend is deployed

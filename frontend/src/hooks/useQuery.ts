@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PipelineStep } from "../types/pipeline";
 import { useSSEStream } from "./useSSEStream";
+import { API_BASE } from "../config";
 
 export function useQuery(onStep: (step: PipelineStep) => void) {
   const [isQuerying, setIsQuerying] = useState(false);
@@ -15,7 +16,7 @@ export function useQuery(onStep: (step: PipelineStep) => void) {
 
     try {
       await startStream(
-        "/query",
+        `${API_BASE}/query`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
