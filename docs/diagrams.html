@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG VIZ — Architecture Diagrams</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      padding: 2rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #58a6ff;
+      margin-bottom: 0.4rem;
+    }
+
+    header p {
+      color: #8b949e;
+      font-size: 1rem;
+    }
+
+    .diagram-section {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .diagram-section h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: #1f6feb33;
+      color: #58a6ff;
+      border: 1px solid #1f6feb;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .diagram-section p.desc {
+      color: #8b949e;
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+
+    .mermaid svg {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>RAG VIZ — Architecture Diagrams</h1>
+  <p>Explainable RAG System Visualizer · Portfolio Reference</p>
+</header>
+
+<!-- ───────────────────────────────────────────
+     DIAGRAM 1 — SYSTEM ARCHITECTURE
+─────────────────────────────────────────── -->
+<div class="diagram-section">
+  <h2>1. System Architecture <span class="badge">Full Stack</span></h2>
+  <p class="desc">
+    End-to-end view of how the browser, FastAPI backend, local ML models, vector store, and external APIs
+    connect. The SSE stream is the real-time bridge that makes the pipeline visible.
+  </p>
+
+  <div class="mermaid">
+graph TB
+
+  subgraph BROWSER["  Browser  "]
+    direction TB
+    UP["📄 FileUpload\nDrag-drop PDF · DOCX · TXT"]
+    CHAT["💬 ChatPanel\nQuery input · message history"]
+    PIPE["📊 PipelinePanel\nStep cards · real-time updates"]
+    HOOKS["🔗 Hooks\nuseSSEStream · useQuery · useUpload"]
+    UP --- HOOKS
+    CHAT --- HOOKS
+    HOOKS --- PIPE
+  end
+
+  subgraph BACKEND["  FastAPI Backend — port 8000  "]
+    direction TB
+    ING["POST /upload\nIngest Pipeline"]
+    QRY["POST /query\nQuery Pipeline"]
+    TR["⚡ PipelineTracer\nasyncio.Queue → SSE"]
+    ING --> TR
+    QRY --> TR
+  end
+
+  subgraph LOCAL["  Local ML Models (no API cost)  "]
+    EMB["🧠 Sentence Transformer\nall-MiniLM-L6-v2\n384-dim embeddings"]
+    CE["🎯 Cross-Encoder\nms-marco-MiniLM-L-6-v2\nre-ranking"]
+  end
+
+  subgraph STORAGE["  Local Storage  "]
+    CHROMA["🗄️ ChromaDB\nCosine similarity\nvector store"]
+    FILES["📁 ./uploads/\noriginal documents"]
+  end
+
+  subgraph EXTERNAL["  External APIs  "]
+    CLAUDE["✨ Anthropic Claude\nSonnet 4.6\nroute · transform · eval · generate · verify"]
+    TAV["🌐 Tavily Search\nCRAG web fallback\n(optional)"]
+  end
+
+  UP -- "FormData" --> ING
+  CHAT -- "POST JSON" --> QRY
+  TR -- "SSE stream\ndata:{step,status,data}" --> HOOKS
+
+  ING -- "embed chunks" --> EMB
+  QRY -- "embed query" --> EMB
+  QRY -- "score pairs" --> CE
+
+  EMB -- "store 384-dim\nvectors" --> CHROMA
+  CHROMA -- "top-K\nretrieval" --> QRY
+  ING --> FILES
+
+  QRY -- "5 LLM calls\nacross pipeline" --> CLAUDE
+  QRY -- "relevance=0\nfallback" --> TAV
+
+  style BROWSER fill:#1a2332,stroke:#3b5bdb,color:#adc8ff
+  style BACKEND fill:#1a2d1a,stroke:#2ea043,color:#7ee787
+  style LOCAL fill:#2d1a2d,stroke:#8b5cf6,color:#c4b5fd
+  style STORAGE fill:#1a2d2d,stroke:#0891b2,color:#7dd3fc
+  style EXTERNAL fill:#2d1a1a,stroke:#d97706,color:#fbbf24
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────
+     DIAGRAM 2 — RAG PIPELINE
+─────────────────────────────────────────── -->
+<div class="diagram-section">
+  <h2>2. RAG Query Pipeline <span class="badge">9 Steps</span></h2>
+  <p class="desc">
+    Each step streams to the UI as it completes. The CRAG evaluator is the branching point —
+    it decides whether to use retrieved documents, trigger a live web search, or both.
+    The verifier can trigger a single retry if the answer fails faithfulness or relevance checks.
+  </p>
+
+  <div class="mermaid">
+flowchart TD
+
+  START(["👤 User Question"])
+
+  subgraph STEP1["Step 1 — Router"]
+    R["🗺️ Classify query strategy\nvia Claude\n─────────────────────────\nnone · multi_query\ndecomposition · hyde · step_back"]
+  end
+
+  subgraph STEP2["Step 2 — Transformer"]
+    T["🔄 Rewrite query per strategy\n─────────────────────────\nnone → 1 query as-is\nmulti_query → 3 rewrites + original\ndecomposition → 2-4 sub-questions\nhyde → hypothetical passage\nstep_back → broad + original"]
+  end
+
+  subgraph STEP3["Step 3 — Retriever"]
+    RE["🔍 Embed each query\nsearch ChromaDB top-K\n─────────────────────────\nDeduplicate by text\nkeep highest cosine score"]
+  end
+
+  subgraph STEP4["Step 4 — Reranker"]
+    RR["🎯 Cross-encoder scoring\n(question, chunk) pairs\n─────────────────────────\nTrack rank delta per chunk\nDrop lowest scorers"]
+  end
+
+  subgraph STEP5["Step 5 — Evaluator (CRAG)"]
+    EV["⚖️ Claude judges each chunk\nrelevant · partially_relevant · irrelevant\n─────────────────────────\nDecide retrieval outcome"]
+  end
+
+  DECISION{"Outcome?"}
+
+  subgraph STEP6A["Step 6 — Web Search"]
+    WS["🌐 Tavily API\nFetch live results\nReturn as RAG chunks"]
+  end
+
+  SKIP["Skip web search"]
+
+  subgraph STEP7["Step 7 — Context Builder"]
+    CB["📐 Assemble prompt\nToken budget: 2000 tokens\n─────────────────────────\nTrack full · truncated · removed\nper chunk with token offsets"]
+  end
+
+  subgraph STEP8["Step 8 — Generator"]
+    GE["✨ Claude Sonnet 4.6\nmax_tokens = 1024\n─────────────────────────\nProduces the answer"]
+  end
+
+  subgraph STEP9["Step 9 — Verifier"]
+    VE["🔎 Claude judges answer\nFaithfulness: faithful · minor_issues · hallucinated\nRelevance: relevant · partial · off_topic"]
+  end
+
+  VERDICT{"Accepted?"}
+
+  DONE(["💬 Answer → ChatPanel"])
+
+  START --> STEP1
+  STEP1 --> STEP2
+  STEP2 --> STEP3
+  STEP3 --> STEP4
+  STEP4 --> STEP5
+  STEP5 --> DECISION
+
+  DECISION -- "0 relevant chunks\nuse web only" --> STEP6A
+  DECISION -- "≥50% relevant\nuse docs" --> SKIP
+  DECISION -- "mixed\nuse both" --> STEP6A
+
+  STEP6A --> STEP7
+  SKIP --> STEP7
+
+  STEP7 --> STEP8
+  STEP8 --> STEP9
+  STEP9 --> VERDICT
+
+  VERDICT -- "✅ Yes" --> DONE
+  VERDICT -- "❌ No — retry\nwith corrective prompt" --> STEP8
+
+  style STEP1 fill:#1a2a4a,stroke:#3b82f6,color:#bfdbfe
+  style STEP2 fill:#1a2a4a,stroke:#3b82f6,color:#bfdbfe
+  style STEP3 fill:#1a2a4a,stroke:#3b82f6,color:#bfdbfe
+  style STEP4 fill:#1a2a4a,stroke:#3b82f6,color:#bfdbfe
+  style STEP5 fill:#2a1a3a,stroke:#8b5cf6,color:#ddd6fe
+  style STEP6A fill:#2a1a1a,stroke:#ef4444,color:#fecaca
+  style STEP7 fill:#1a2a1a,stroke:#22c55e,color:#bbf7d0
+  style STEP8 fill:#2a2a1a,stroke:#eab308,color:#fef9c3
+  style STEP9 fill:#2a2a1a,stroke:#eab308,color:#fef9c3
+  style DECISION fill:#161b22,stroke:#6b7280,color:#e5e7eb
+  style VERDICT fill:#161b22,stroke:#6b7280,color:#e5e7eb
+  style START fill:#0d3321,stroke:#22c55e,color:#bbf7d0
+  style DONE fill:#0d3321,stroke:#22c55e,color:#bbf7d0
+  style SKIP fill:#161b22,stroke:#30363d,color:#8b949e
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────
+     DIAGRAM 3 — INGEST PIPELINE
+─────────────────────────────────────────── -->
+<div class="diagram-section">
+  <h2>3. Document Ingest Pipeline <span class="badge">4 Steps</span></h2>
+  <p class="desc">
+    Runs once when a file is uploaded. Also streams events to the UI so you can watch chunks
+    and embeddings being created in real-time.
+  </p>
+
+  <div class="mermaid">
+flowchart LR
+
+  FILE(["📄 PDF · DOCX · TXT"])
+
+  subgraph S1["Step 1 — Loader"]
+    L["PyPDFLoader\nDocx2txtLoader\nPlain text\n────────────\nemit: filename\nchar_count"]
+  end
+
+  subgraph S2["Step 2 — Chunker"]
+    C["RecursiveCharacterTextSplitter\nsize=500 · overlap=50\n────────────────────────────\nSeparators: \\n\\n → \\n → . → space → char\nemit: chunk_count"]
+  end
+
+  subgraph S3["Step 3 — Embedder"]
+    E["SentenceTransformer\nall-MiniLM-L6-v2\n384 dimensions\n────────────────────────────\nBatch encode all chunks\nemit: vectors_created"]
+  end
+
+  subgraph S4["Step 4 — VectorStore"]
+    V["ChromaDB (cosine)\nWipe + replace on new upload\nID: {source}_chunk_{i}\n────────────────────────────\nPersisted to ./chroma_db\nemit: total_stored"]
+  end
+
+  FILE --> S1 --> S2 --> S3 --> S4
+  S4 --> READY(["✅ Document ready\nQuery pipeline unlocked"])
+
+  style S1 fill:#1a2d2d,stroke:#0891b2,color:#7dd3fc
+  style S2 fill:#1a2d2d,stroke:#0891b2,color:#7dd3fc
+  style S3 fill:#2d1a2d,stroke:#8b5cf6,color:#c4b5fd
+  style S4 fill:#2d1a2d,stroke:#8b5cf6,color:#c4b5fd
+  style FILE fill:#0d3321,stroke:#22c55e,color:#bbf7d0
+  style READY fill:#0d3321,stroke:#22c55e,color:#bbf7d0
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#161b22',
+      primaryColor: '#1f3a5f',
+      primaryTextColor: '#e6edf3',
+      primaryBorderColor: '#3b82f6',
+      lineColor: '#58a6ff',
+      secondaryColor: '#21262d',
+      tertiaryColor: '#161b22',
+      edgeLabelBackground: '#161b22',
+      clusterBkg: '#161b22',
+      clusterBorder: '#30363d',
+      titleColor: '#f0f6fc',
+      nodeTextColor: '#e6edf3',
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+      fontSize: '14px',
+    },
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      padding: 20,
+    },
+    securityLevel: 'loose',
+  });
+</script>
+</body>
+</html>
