@@ -78,59 +78,27 @@ RAG_VIZ/
 
 ## System Architecture
 
-```mermaid
-graph TB
+![RAG VIZ System Architecture](docs/system-architecture.png)
 
-  subgraph BROWSER["  Browser  "]
-    direction TB
-    UP["📄 FileUpload\nDrag-drop PDF · DOCX · TXT"]
-    CHAT["💬 ChatPanel\nQuery input · message history"]
-    PIPE["📊 PipelinePanel\nStep cards · real-time updates"]
-    HOOKS["🔗 Hooks\nuseSSEStream · useQuery · useUpload"]
-    UP --- HOOKS
-    CHAT --- HOOKS
-    HOOKS --- PIPE
-  end
+The system is split into four layers: a React/TypeScript frontend, a FastAPI backend with an SSE event bus, local ML models (no API cost), and external services (Claude + Tavily). The frontend streams pipeline progress in real-time via Server-Sent Events as each step completes.
 
-  subgraph BACKEND["  FastAPI Backend — port 8000  "]
-    direction TB
-    ING["POST /upload\nIngest Pipeline"]
-    QRY["POST /query\nQuery Pipeline"]
-    TR["⚡ PipelineTracer\nasyncio.Queue → SSE"]
-    ING --> TR
-    QRY --> TR
-  end
+---
 
-  subgraph LOCAL["  Local ML Models (no API cost)  "]
-    EMB["🧠 Sentence Transformer\nall-MiniLM-L6-v2 · 384-dim"]
-    CE["🎯 Cross-Encoder\nms-marco-MiniLM-L-6-v2"]
-  end
+## Query Pipeline
 
-  subgraph STORAGE["  Local Storage  "]
-    CHROMA["🗄️ ChromaDB\nCosine similarity · persisted"]
-    FILES["📁 ./uploads/"]
-  end
+![RAG VIZ Query Pipeline](docs/rag-pipeline.png)
 
-  subgraph EXTERNAL["  External APIs  "]
-    CLAUDE["✨ Anthropic Claude Sonnet 4.6\nroute · transform · eval · generate · verify"]
-    TAV["🌐 Tavily Search\nCRAG web fallback (optional)"]
-  end
+The 9-step query pipeline (left to right):
 
-  UP -- "FormData" --> ING
-  CHAT -- "POST JSON" --> QRY
-  TR -- "SSE  data:{step,status,data}" --> HOOKS
-
-  ING -- "embed chunks" --> EMB
-  QRY -- "embed query" --> EMB
-  QRY -- "score pairs" --> CE
-
-  EMB -- "store 384-dim vectors" --> CHROMA
-  CHROMA -- "top-K retrieval" --> QRY
-  ING --> FILES
-
-  QRY -- "5 LLM calls across pipeline" --> CLAUDE
-  QRY -- "relevance=0 fallback" --> TAV
-```
+1. **Route** — rule-based check + LLM classifier selects one of 5 retrieval strategies
+2. **Transform** — rewrites the query (multi-query, HyDE, step-back, decomposition)
+3. **Retrieve** — embeds queries, searches ChromaDB, merges + deduplicates results
+4. **Re-rank** — Cross-Encoder scores each (query, chunk) pair; sorts by relevance
+5. **Evaluate** — CRAG judge decides: use docs, web search, or both
+6. **Web Search** — Tavily API fetches live results when docs are insufficient
+7. **Build Context** — packs chunks greedily within a 2000-token budget
+8. **Generate** — Claude Sonnet produces an answer citing sources
+9. **Verify** — faithfulness + relevance check; retries once with a corrective prompt if rejected
 
 ## Getting Started
 
