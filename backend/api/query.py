@@ -130,9 +130,17 @@ async def query_documents(request: QueryRequest, req: Request):
                     "query": request.question,
                     "reason": decision,
                 })
-                search_result = await loop.run_in_executor(
-                    None, lambda: web_search(request.question)
-                )
+                try:
+                    search_result = await loop.run_in_executor(
+                        None, lambda: web_search(request.question)
+                    )
+                except Exception as e:
+                    error_msg = f"Web search failed: {type(e).__name__}: {str(e)}"
+                    print(f"ERROR: {error_msg}")
+                    print(traceback.format_exc())
+                    await tracer.emit("web_search", "error", {"message": error_msg})
+                    # Fall back to whatever document chunks we have
+                    search_result = {"results": [], "query": request.question, "note": error_msg}
                 web_chunks = search_result["results"]
 
                 if decision == "web_search":
